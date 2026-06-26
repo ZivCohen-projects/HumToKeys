@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HumToKeys</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero-panel">
+        <div>
+          <p class="eyebrow">HumToKeys</p>
+          <h1>Sing a melody. Turn it into notes. Watch a piano play it back.</h1>
+        </div>
+        <div class="transport">
+          <button id="recordButton" class="primary-button" type="button">Record</button>
+          <button id="stopButton" class="secondary-button" type="button" disabled>Stop</button>
+          <button id="demoButton" class="secondary-button" type="button">Load demo</button>
+          <button id="clearButton" class="ghost-button" type="button">Clear</button>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <aside class="capture-panel" aria-label="Live pitch capture">
+          <div class="status-block">
+            <span id="statusPill" class="status-pill">Ready</span>
+            <h2 id="currentNote">--</h2>
+            <p id="frequencyReadout">Waiting for microphone input.</p>
+          </div>
+
+          <div class="meter" aria-label="Detected pitch strength">
+            <span id="levelBar"></span>
+          </div>
+
+          <div class="capture-stats">
+            <div>
+              <span>Notes</span>
+              <strong id="noteCount">0</strong>
+            </div>
+            <div>
+              <span>Length</span>
+              <strong id="durationReadout">0.0s</strong>
+            </div>
+          </div>
+
+          <ol id="noteTrail" class="note-trail" aria-label="Detected notes"></ol>
+        </aside>
+
+        <section class="score-panel" aria-label="Generated music sheet">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Generated sheet</p>
+              <h2>Your melody</h2>
+            </div>
+            <button id="playButton" class="primary-button" type="button" disabled>Play on piano</button>
+          </div>
+
+          <div class="sheet-wrap">
+            <svg id="sheetSvg" viewBox="0 0 980 330" role="img" aria-label="Generated music sheet"></svg>
+          </div>
+
+          <div id="pianoScene" class="piano-scene" aria-label="3D piano playback"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
