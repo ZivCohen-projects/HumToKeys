@@ -27,6 +27,7 @@ const els = {
   naturalOnlyToggle: document.querySelector("#naturalOnlyToggle"),
   viewScoreButton: document.querySelector("#viewScoreButton"),
   exportButton: document.querySelector("#exportButton"),
+  dialogExportButton: document.querySelector("#dialogExportButton"),
   playButton: document.querySelector("#playButton"),
   statusPill: document.querySelector("#statusPill"),
   currentNote: document.querySelector("#currentNote"),
@@ -63,6 +64,7 @@ els.demoButton.addEventListener("click", loadDemo);
 els.clearButton.addEventListener("click", clearMelody);
 els.playButton.addEventListener("click", playMelody);
 els.exportButton.addEventListener("click", exportScore);
+els.dialogExportButton.addEventListener("click", exportScore);
 els.viewScoreButton.addEventListener("click", openScoreDialog);
 els.closeScoreButton.addEventListener("click", () => els.scoreDialog.close());
 els.naturalOnlyToggle.addEventListener("change", handlePitchModeChange);
@@ -279,10 +281,12 @@ function renderEmptyScore(svg) {
   svg.setAttribute("viewBox", `0 0 ${scoreWidth} ${height}`);
   svg.dataset.scoreHeight = String(height);
   svg.innerHTML = `
-    <rect x="0" y="0" width="${scoreWidth}" height="${height}" fill="#fffdf8"></rect>
+    <rect x="0" y="0" width="${scoreWidth}" height="${height}" fill="#ffffff"></rect>
+    <text x="${scoreWidth / 2}" y="42" text-anchor="middle" font-size="28" font-family="Georgia, serif" font-weight="700" fill="#000000">HumToKeys Melody</text>
     ${staffLines(scoreSystemTop)}
-    <text x="54" y="176" font-size="84" font-family="Georgia, serif" fill="#1f2320">G</text>
-    <text x="178" y="176" font-size="22" fill="#697269">Record or load a demo to generate notation.</text>
+    ${scoreClef(scoreSystemTop)}
+    ${timeSignature(scoreSystemTop)}
+    <text x="202" y="174" font-size="21" font-family="Georgia, serif" fill="#000000">Record or load a demo to generate notation.</text>
   `;
 }
 
@@ -295,13 +299,17 @@ function renderScore(svg, notes, { preview }) {
   const height = preview ? 330 : Math.max(330, 78 + systems.length * scoreSystemGap);
   const content = visibleSystems.map((system) => renderSystem(system, preview)).join("");
   const overflowMessage = overflowCount
-    ? `<text x="${scoreStartX}" y="306" font-size="15" font-weight="800" fill="#176a62">+ ${overflowCount} more notes in full score</text>`
+    ? `<text x="${scoreStartX}" y="306" font-size="15" font-family="Georgia, serif" font-weight="700" fill="#000000">+ ${overflowCount} more notes in full score</text>`
     : "";
+  const title = preview
+    ? ""
+    : `<text x="${scoreWidth / 2}" y="42" text-anchor="middle" font-size="30" font-family="Georgia, serif" font-weight="700" fill="#000000">HumToKeys Melody</text>`;
 
   svg.setAttribute("viewBox", `0 0 ${scoreWidth} ${height}`);
   svg.dataset.scoreHeight = String(height);
   svg.innerHTML = `
-    <rect x="0" y="0" width="${scoreWidth}" height="${height}" fill="#fffdf8"></rect>
+    <rect x="0" y="0" width="${scoreWidth}" height="${height}" fill="#ffffff"></rect>
+    ${title}
     ${content}
     ${overflowMessage}
   `;
@@ -386,25 +394,19 @@ function measureWidthFor(measure) {
 }
 
 function renderSystem(system, preview) {
-  const labelY = system.top + 198;
   const barlines = system.barlines
-    .map((x) => `<line x1="${x}" y1="${system.top - 10}" x2="${x}" y2="${system.top + 134}" stroke="#1f2320" stroke-width="3"></line>`)
+    .map((x) => `<line x1="${x}" y1="${system.top}" x2="${x}" y2="${system.top + 104}" stroke="#000000" stroke-width="2"></line>`)
     .join("");
   const noteShapes = system.items
     .map(({ note, x }) => `
       ${renderNoteGlyph(note, x, system.top)}
-      <text x="${x - 24}" y="${labelY}" font-size="13" fill="#697269">${note.note}</text>
-      <text x="${x - 24}" y="${labelY + 16}" font-size="11" fill="#9a9f97">${durationShortLabel(note.durationName)}</text>
     `)
     .join("");
-  const systemLabel = preview
-    ? ""
-    : `<text x="${scoreMargin}" y="${system.top - 24}" font-size="12" fill="#9a9f97">${system.measures.length} measure${system.measures.length === 1 ? "" : "s"}</text>`;
 
   return `
-    ${systemLabel}
     ${staffLines(system.top)}
-    <text x="52" y="${system.top + 92}" font-size="84" font-family="Georgia, serif" fill="#1f2320">G</text>
+    ${scoreClef(system.top)}
+    ${timeSignature(system.top)}
     ${barlines}
     ${noteShapes}
   `;
@@ -418,13 +420,13 @@ function renderNoteGlyph(note, x, systemTop) {
   const stemY = stemUp ? y - 58 : y + 58;
   const stemX = stemUp ? x + 11 : x - 11;
   const head = openHead
-    ? `<ellipse cx="${x}" cy="${y}" rx="14" ry="10" transform="rotate(-18 ${x} ${y})" fill="#fffdf8" stroke="#1f2320" stroke-width="3"></ellipse>`
-    : `<ellipse cx="${x}" cy="${y}" rx="14" ry="10" transform="rotate(-18 ${x} ${y})" fill="#1f2320"></ellipse>`;
+    ? `<ellipse cx="${x}" cy="${y}" rx="14" ry="10" transform="rotate(-18 ${x} ${y})" fill="#ffffff" stroke="#000000" stroke-width="3"></ellipse>`
+    : `<ellipse cx="${x}" cy="${y}" rx="14" ry="10" transform="rotate(-18 ${x} ${y})" fill="#000000"></ellipse>`;
   const stem = hasStem
-    ? `<line x1="${stemX}" y1="${y}" x2="${stemX}" y2="${stemY}" stroke="#1f2320" stroke-width="3"></line>`
+    ? `<line x1="${stemX}" y1="${y}" x2="${stemX}" y2="${stemY}" stroke="#000000" stroke-width="3"></line>`
     : "";
   const dot = note.durationName === "dotted-half"
-    ? `<circle cx="${x + 27}" cy="${y - 2}" r="4" fill="#1f2320"></circle>`
+    ? `<circle cx="${x + 27}" cy="${y - 2}" r="4" fill="#000000"></circle>`
     : "";
   const flag = note.durationName === "eighth" && hasStem
     ? renderEighthFlag(stemX, stemY, stemUp)
@@ -441,9 +443,9 @@ function renderNoteGlyph(note, x, systemTop) {
 
 function renderEighthFlag(stemX, stemY, stemUp) {
   if (stemUp) {
-    return `<path d="M ${stemX} ${stemY} C ${stemX + 26} ${stemY + 8}, ${stemX + 28} ${stemY + 28}, ${stemX + 8} ${stemY + 34}" fill="none" stroke="#1f2320" stroke-width="3" stroke-linecap="round"></path>`;
+    return `<path d="M ${stemX} ${stemY} C ${stemX + 26} ${stemY + 8}, ${stemX + 28} ${stemY + 28}, ${stemX + 8} ${stemY + 34}" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round"></path>`;
   }
-  return `<path d="M ${stemX} ${stemY} C ${stemX + 26} ${stemY - 8}, ${stemX + 28} ${stemY - 28}, ${stemX + 8} ${stemY - 34}" fill="none" stroke="#1f2320" stroke-width="3" stroke-linecap="round"></path>`;
+  return `<path d="M ${stemX} ${stemY} C ${stemX + 26} ${stemY - 8}, ${stemX + 28} ${stemY - 28}, ${stemX + 8} ${stemY - 34}" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round"></path>`;
 }
 
 function durationShortLabel(durationName) {
@@ -459,8 +461,19 @@ function durationShortLabel(durationName) {
 
 function staffLines(systemTop) {
   return [0, 26, 52, 78, 104]
-    .map((offset) => `<line x1="${scoreMargin}" y1="${systemTop + offset}" x2="${scoreRight}" y2="${systemTop + offset}" stroke="#1f2320" stroke-width="2"></line>`)
+    .map((offset) => `<line x1="${scoreMargin}" y1="${systemTop + offset}" x2="${scoreRight}" y2="${systemTop + offset}" stroke="#000000" stroke-width="2"></line>`)
     .join("");
+}
+
+function scoreClef(systemTop) {
+  return `<text x="55" y="${systemTop + 96}" font-size="98" font-family="Georgia, 'Times New Roman', serif" fill="#000000">&#119070;</text>`;
+}
+
+function timeSignature(systemTop) {
+  return `
+    <text x="112" y="${systemTop + 44}" text-anchor="middle" font-size="39" font-family="Georgia, serif" font-weight="700" fill="#000000">4</text>
+    <text x="112" y="${systemTop + 90}" text-anchor="middle" font-size="39" font-family="Georgia, serif" font-weight="700" fill="#000000">4</text>
+  `;
 }
 
 function midiToSheetY(midi, systemTop = scoreSystemTop) {
@@ -473,12 +486,12 @@ function ledgerLines(midi, x, systemTop) {
   const lines = [];
   if (y < systemTop - 2) {
     for (let lineY = systemTop - 26; lineY >= y - 8; lineY -= 26) {
-      lines.push(`<line x1="${x - 20}" y1="${lineY}" x2="${x + 20}" y2="${lineY}" stroke="#1f2320" stroke-width="2"></line>`);
+      lines.push(`<line x1="${x - 20}" y1="${lineY}" x2="${x + 20}" y2="${lineY}" stroke="#000000" stroke-width="2"></line>`);
     }
   }
   if (y > systemTop + 106) {
     for (let lineY = systemTop + 130; lineY <= y + 8; lineY += 26) {
-      lines.push(`<line x1="${x - 20}" y1="${lineY}" x2="${x + 20}" y2="${lineY}" stroke="#1f2320" stroke-width="2"></line>`);
+      lines.push(`<line x1="${x - 20}" y1="${lineY}" x2="${x + 20}" y2="${lineY}" stroke="#000000" stroke-width="2"></line>`);
     }
   }
   return lines.join("");
@@ -533,8 +546,34 @@ async function sleepDuringPlayback(ms) {
   }
 }
 
-function exportScore() {
+async function exportScore() {
   if (!state.melody.length) return;
+  setExportButtons(true, "Saving...");
+
+  try {
+    const pages = await scoreSvgToPdfPages();
+    const pdf = buildPdf(pages);
+    const url = URL.createObjectURL(new Blob([pdf], { type: "application/pdf" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `humtokeys-score-${new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } finally {
+    setExportButtons(false, "Save PDF");
+  }
+}
+
+function setExportButtons(disabled, label) {
+  els.exportButton.disabled = disabled;
+  els.dialogExportButton.disabled = disabled;
+  els.exportButton.textContent = label;
+  els.dialogExportButton.textContent = label;
+}
+
+async function scoreSvgToPdfPages() {
   const clone = els.fullSheetSvg.cloneNode(true);
   const height = clone.dataset.scoreHeight || "330";
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
@@ -543,13 +582,141 @@ function exportScore() {
   const source = `<?xml version="1.0" encoding="UTF-8"?>\n${clone.outerHTML}`;
   const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `humtokeys-score-${new Date().toISOString().slice(0, 10)}.svg`;
-  document.body.append(link);
-  link.click();
-  link.remove();
+  const image = await loadImage(url);
   URL.revokeObjectURL(url);
+
+  const sourceCanvas = document.createElement("canvas");
+  const scale = 2;
+  sourceCanvas.width = scoreWidth * scale;
+  sourceCanvas.height = Number(height) * scale;
+  const sourceContext = sourceCanvas.getContext("2d");
+  sourceContext.fillStyle = "#ffffff";
+  sourceContext.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+  sourceContext.drawImage(image, 0, 0, sourceCanvas.width, sourceCanvas.height);
+
+  return sliceScoreCanvas(sourceCanvas);
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = url;
+  });
+}
+
+function sliceScoreCanvas(sourceCanvas) {
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const margin = 36;
+  const printableWidth = pageWidth - margin * 2;
+  const printableHeight = pageHeight - margin * 2;
+  const sourceSliceHeight = Math.floor(sourceCanvas.width * (printableHeight / printableWidth));
+  const pages = [];
+
+  for (let y = 0; y < sourceCanvas.height; y += sourceSliceHeight) {
+    const sliceHeight = Math.min(sourceSliceHeight, sourceCanvas.height - y);
+    const canvas = document.createElement("canvas");
+    canvas.width = sourceCanvas.width;
+    canvas.height = sliceHeight;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(sourceCanvas, 0, y, sourceCanvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+    pages.push({
+      pageWidth,
+      pageHeight,
+      x: margin,
+      y: pageHeight - margin - (printableWidth * sliceHeight) / sourceCanvas.width,
+      width: printableWidth,
+      height: (printableWidth * sliceHeight) / sourceCanvas.width,
+      imageWidth: canvas.width,
+      imageHeight: canvas.height,
+      imageBytes: dataUrlToBytes(canvas.toDataURL("image/jpeg", 0.94)),
+    });
+  }
+
+  return pages;
+}
+
+function dataUrlToBytes(dataUrl) {
+  const binary = atob(dataUrl.split(",")[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function buildPdf(pages) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const offsets = [0];
+  let byteLength = 0;
+  const objectCount = 2 + pages.length * 3;
+  const catalogId = 1;
+  const pagesId = 2;
+
+  const addString = (value) => {
+    const bytes = encoder.encode(value);
+    chunks.push(bytes);
+    byteLength += bytes.length;
+  };
+  const addBytes = (bytes) => {
+    chunks.push(bytes);
+    byteLength += bytes.length;
+  };
+  const addObject = (id, parts) => {
+    offsets[id] = byteLength;
+    addString(`${id} 0 obj\n`);
+    parts.forEach((part) => {
+      if (typeof part === "string") addString(part);
+      else addBytes(part);
+    });
+    addString("\nendobj\n");
+  };
+
+  addString("%PDF-1.4\n");
+  addObject(catalogId, [`<< /Type /Catalog /Pages ${pagesId} 0 R >>`]);
+
+  const pageIds = pages.map((_, index) => 3 + index * 3);
+  addObject(pagesId, [`<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`]);
+
+  pages.forEach((page, index) => {
+    const pageId = 3 + index * 3;
+    const imageId = pageId + 1;
+    const contentId = pageId + 2;
+    const imageName = `Im${index + 1}`;
+    const content = `q\n${page.width.toFixed(2)} 0 0 ${page.height.toFixed(2)} ${page.x.toFixed(2)} ${page.y.toFixed(2)} cm\n/${imageName} Do\nQ`;
+
+    addObject(pageId, [
+      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${page.pageWidth} ${page.pageHeight}] /Resources << /XObject << /${imageName} ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`,
+    ]);
+    addObject(imageId, [
+      `<< /Type /XObject /Subtype /Image /Width ${page.imageWidth} /Height ${page.imageHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.imageBytes.length} >>\nstream\n`,
+      page.imageBytes,
+      "\nendstream",
+    ]);
+    addObject(contentId, [
+      `<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`,
+    ]);
+  });
+
+  const xrefOffset = byteLength;
+  addString(`xref\n0 ${objectCount + 1}\n0000000000 65535 f \n`);
+  for (let id = 1; id <= objectCount; id += 1) {
+    addString(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
+  }
+  addString(`trailer\n<< /Size ${objectCount + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+
+  const pdf = new Uint8Array(byteLength);
+  let cursor = 0;
+  chunks.forEach((chunk) => {
+    pdf.set(chunk, cursor);
+    cursor += chunk.length;
+  });
+  return pdf;
 }
 
 function openScoreDialog() {

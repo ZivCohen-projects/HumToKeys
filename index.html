@@ -60,7 +60,7 @@
             </div>
             <div class="score-actions">
               <button id="viewScoreButton" class="secondary-button" type="button" disabled>View score</button>
-              <button id="exportButton" class="secondary-button" type="button" disabled>Export score</button>
+              <button id="exportButton" class="secondary-button" type="button" disabled>Save PDF</button>
               <button id="playButton" class="primary-button" type="button" disabled>Play on piano</button>
             </div>
           </div>
@@ -81,7 +81,10 @@
             <p class="eyebrow">Full score</p>
             <h2 id="scoreDialogTitle">Your melody</h2>
           </div>
-          <button id="closeScoreButton" class="ghost-button" type="button">Close</button>
+          <div class="dialog-actions">
+            <button id="dialogExportButton" class="secondary-button" type="button">Save PDF</button>
+            <button id="closeScoreButton" class="ghost-button" type="button">Close</button>
+          </div>
         </div>
         <div class="full-sheet-wrap">
           <svg id="fullSheetSvg" viewBox="0 0 980 330" role="img" aria-label="Full generated music sheet"></svg>

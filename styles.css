@@ -1,15 +1,10 @@
 :root {
-  --ink: #1f2320;
-  --muted: #697269;
-  --paper: #fffaf0;
-  --panel: rgba(255, 255, 255, 0.78);
-  --line: rgba(31, 35, 32, 0.15);
-  --teal: #2a9d8f;
-  --teal-dark: #176a62;
-  --gold: #f4c95d;
-  --coral: #e76f51;
-  --mahogany: #5b3124;
-  --shadow: 0 22px 70px rgba(31, 35, 32, 0.16);
+  --ink: #000000;
+  --muted: #4a4a4a;
+  --paper: #ffffff;
+  --panel: #ffffff;
+  --line: #000000;
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
 }
 
 * {
@@ -23,10 +18,7 @@ body {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
-  background:
-    linear-gradient(135deg, rgba(244, 201, 93, 0.24), rgba(255, 250, 240, 0.94) 42%),
-    linear-gradient(165deg, rgba(42, 157, 143, 0.2), transparent 38%),
-    var(--paper);
+  background: var(--paper);
 }
 
 button {
@@ -44,10 +36,9 @@ button {
 
 .hero-panel,
 .workspace {
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(255, 250, 240, 0.82);
+  border: 2px solid var(--line);
+  background: #ffffff;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(16px);
 }
 
 .hero-panel {
@@ -61,7 +52,7 @@ button {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: var(--teal-dark);
+  color: var(--muted);
   font-size: 0.76rem;
   font-weight: 850;
   letter-spacing: 0;
@@ -113,7 +104,7 @@ h2 {
   gap: 9px;
   color: var(--ink);
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.72);
+  background: #ffffff;
   cursor: pointer;
   font-weight: 800;
 }
@@ -121,7 +112,7 @@ h2 {
 .mode-toggle input {
   width: 18px;
   height: 18px;
-  accent-color: var(--teal-dark);
+  accent-color: var(--ink);
 }
 
 .primary-button,
@@ -147,11 +138,11 @@ h2 {
 .secondary-button {
   color: var(--ink);
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.78);
+  background: #ffffff;
 }
 
 .ghost-button {
-  color: var(--teal-dark);
+  color: var(--ink);
   background: transparent;
 }
 
@@ -171,7 +162,7 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  background: rgba(255, 255, 255, 0.42);
+  background: #ffffff;
 }
 
 .status-block {
@@ -186,7 +177,7 @@ h2 {
   padding: 0 10px;
   place-items: center;
   color: white;
-  background: var(--teal-dark);
+  background: var(--ink);
   font-size: 0.78rem;
   font-weight: 850;
 }
@@ -211,7 +202,7 @@ h2 {
   display: block;
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, var(--teal), var(--gold), var(--coral));
+  background: var(--ink);
   transition: width 100ms ease;
 }
 
@@ -246,8 +237,8 @@ h2 {
 
 .note-trail li {
   padding: 10px 12px;
-  border-left: 4px solid var(--teal);
-  background: rgba(255, 255, 255, 0.66);
+  border-left: 4px solid var(--ink);
+  background: #ffffff;
   color: var(--muted);
 }
 
@@ -262,7 +253,7 @@ h2 {
   min-height: 280px;
   padding: 14px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.82);
+  background: #ffffff;
   overflow: auto;
 }
 
@@ -278,7 +269,7 @@ h2 {
   max-height: calc(100vh - 32px);
   padding: 0;
   color: var(--ink);
-  border: 1px solid rgba(31, 35, 32, 0.22);
+  border: 2px solid var(--line);
   background: var(--paper);
   box-shadow: var(--shadow);
 }
@@ -301,11 +292,18 @@ h2 {
   gap: 16px;
 }
 
+.dialog-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .full-sheet-wrap {
   max-height: calc(100vh - 180px);
   padding: 16px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.86);
+  background: #ffffff;
   overflow: auto;
 }
 
@@ -366,6 +364,10 @@ h2 {
   .dialog-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .dialog-actions {
+    width: 100%;
   }
 
   .full-sheet-wrap {
