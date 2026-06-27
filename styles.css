@@ -105,6 +105,25 @@ h2 {
   justify-content: flex-end;
 }
 
+.mode-toggle {
+  min-height: 46px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.mode-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--teal-dark);
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button {
@@ -292,7 +311,8 @@ h2 {
 
   .primary-button,
   .secondary-button,
-  .ghost-button {
+  .ghost-button,
+  .mode-toggle {
     width: 100%;
   }
 

@@ -6,6 +6,9 @@ const state = {
   recording: false,
   startedAt: 0,
   lastCaptureAt: 0,
+  stableMidi: null,
+  pendingMidi: null,
+  pendingSince: 0,
   rawFrames: [],
   melody: [],
   piano: null,
@@ -17,6 +20,7 @@ const els = {
   stopButton: document.querySelector("#stopButton"),
   demoButton: document.querySelector("#demoButton"),
   clearButton: document.querySelector("#clearButton"),
+  naturalOnlyToggle: document.querySelector("#naturalOnlyToggle"),
   exportButton: document.querySelector("#exportButton"),
   playButton: document.querySelector("#playButton"),
   statusPill: document.querySelector("#statusPill"),
@@ -43,6 +47,7 @@ els.demoButton.addEventListener("click", loadDemo);
 els.clearButton.addEventListener("click", clearMelody);
 els.playButton.addEventListener("click", playMelody);
 els.exportButton.addEventListener("click", exportScore);
+els.naturalOnlyToggle.addEventListener("change", handlePitchModeChange);
 window.addEventListener("resize", resizePiano);
 
 async function startRecording() {
@@ -66,6 +71,9 @@ async function startRecording() {
     state.recording = true;
     state.startedAt = performance.now();
     state.lastCaptureAt = 0;
+    state.stableMidi = null;
+    state.pendingMidi = null;
+    state.pendingSince = 0;
 
     els.statusPill.textContent = "Listening";
     els.recordButton.disabled = true;
@@ -111,7 +119,7 @@ function capturePitch(now = performance.now()) {
   els.durationReadout.textContent = `${elapsed.toFixed(1)}s`;
 
   if (pitch > 60 && pitch < 1400 && rms > 0.012) {
-    const midi = frequencyToMidi(pitch);
+    const midi = stabilizeMidi(pitch, now);
     const note = midiToNoteName(midi);
     els.currentNote.textContent = note;
     els.frequencyReadout.textContent = `${pitch.toFixed(1)} Hz`;
@@ -605,6 +613,25 @@ function clearMelody() {
   renderEmptySheet();
 }
 
+function handlePitchModeChange() {
+  state.stableMidi = null;
+  state.pendingMidi = null;
+  state.pendingSince = 0;
+
+  if (els.naturalOnlyToggle.checked && state.melody.length) {
+    state.melody = state.melody.map((note) => {
+      const midi = nearestNaturalMidi(note.midi);
+      return {
+        ...note,
+        midi,
+        note: midiToNoteName(midi),
+        frequency: midiToFrequency(midi),
+      };
+    });
+    renderMelody();
+  }
+}
+
 function autoCorrelate(buffer, sampleRate) {
   const size = buffer.length;
   const rms = getRms(buffer);
@@ -656,8 +683,56 @@ function getRms(buffer) {
   return Math.sqrt(sum / buffer.length);
 }
 
+function stabilizeMidi(frequency, now) {
+  const rawMidi = frequencyToMidiFloat(frequency);
+  const targetMidi = applyPitchMode(Math.round(rawMidi));
+  const toleranceSemitones = 0.42;
+  const changeHoldMs = 170;
+
+  if (state.stableMidi === null) {
+    state.stableMidi = targetMidi;
+    return targetMidi;
+  }
+
+  const stableDistance = Math.abs(rawMidi - state.stableMidi);
+  if (targetMidi === state.stableMidi || stableDistance < toleranceSemitones) {
+    state.pendingMidi = null;
+    state.pendingSince = 0;
+    return state.stableMidi;
+  }
+
+  if (state.pendingMidi !== targetMidi) {
+    state.pendingMidi = targetMidi;
+    state.pendingSince = now;
+    return state.stableMidi;
+  }
+
+  if (now - state.pendingSince >= changeHoldMs) {
+    state.stableMidi = targetMidi;
+    state.pendingMidi = null;
+    state.pendingSince = 0;
+  }
+
+  return state.stableMidi;
+}
+
+function applyPitchMode(midi) {
+  return els.naturalOnlyToggle.checked ? nearestNaturalMidi(midi) : midi;
+}
+
+function nearestNaturalMidi(midi) {
+  if (whitePitchClasses.has(((midi % 12) + 12) % 12)) return midi;
+  const pitchClass = ((midi % 12) + 12) % 12;
+  if (pitchClass === 1 || pitchClass === 6) return midi - 1;
+  return midi + 1;
+}
+
+function frequencyToMidiFloat(frequency) {
+  return 69 + 12 * Math.log2(frequency / 440);
+}
+
 function frequencyToMidi(frequency) {
-  return Math.round(69 + 12 * Math.log2(frequency / 440));
+  return applyPitchMode(Math.round(frequencyToMidiFloat(frequency)));
 }
 
 function midiToFrequency(midi) {
