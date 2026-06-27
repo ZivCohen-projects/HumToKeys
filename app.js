@@ -6,6 +6,7 @@ const state = {
   recording: false,
   startedAt: 0,
   lastCaptureAt: 0,
+  firstPitchAt: 0,
   stableMidi: null,
   pendingMidi: null,
   pendingSince: 0,
@@ -37,6 +38,7 @@ const els = {
 const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const whitePitchClasses = new Set([0, 2, 4, 5, 7, 9, 11]);
 const blackPitchClasses = new Set([1, 3, 6, 8, 10]);
+const recordingWarmupMs = 500;
 
 initPiano();
 renderEmptySheet();
@@ -71,6 +73,7 @@ async function startRecording() {
     state.recording = true;
     state.startedAt = performance.now();
     state.lastCaptureAt = 0;
+    state.firstPitchAt = 0;
     state.stableMidi = null;
     state.pendingMidi = null;
     state.pendingSince = 0;
@@ -124,14 +127,26 @@ function capturePitch(now = performance.now()) {
     els.currentNote.textContent = note;
     els.frequencyReadout.textContent = `${pitch.toFixed(1)} Hz`;
 
-    if (now - state.lastCaptureAt > 105) {
+    if (!state.firstPitchAt) {
+      state.firstPitchAt = now;
+      els.statusPill.textContent = "Settling";
+    }
+
+    const warmupComplete = now - state.firstPitchAt >= recordingWarmupMs;
+    if (warmupComplete && els.statusPill.textContent !== "Recording") {
+      els.statusPill.textContent = "Recording";
+    }
+
+    if (warmupComplete && now - state.lastCaptureAt > 105) {
       state.rawFrames.push({ time: elapsed, frequency: pitch, midi });
       state.lastCaptureAt = now;
       renderTrailFromFrames();
     }
   } else {
+    if (!state.rawFrames.length) state.firstPitchAt = 0;
     els.currentNote.textContent = "--";
     els.frequencyReadout.textContent = "Listening for a clear pitch.";
+    els.statusPill.textContent = state.rawFrames.length ? "Recording" : "Listening";
   }
 
   state.rafId = requestAnimationFrame(capturePitch);
@@ -603,6 +618,8 @@ function loadDemo() {
 function clearMelody() {
   state.rawFrames = [];
   state.melody = [];
+  state.firstPitchAt = 0;
+  state.lastCaptureAt = 0;
   els.currentNote.textContent = "--";
   els.frequencyReadout.textContent = "Waiting for microphone input.";
   els.noteCount.textContent = "0";
