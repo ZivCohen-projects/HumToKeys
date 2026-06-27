@@ -14,6 +14,9 @@ const state = {
   melody: [],
   piano: null,
   activeKey: null,
+  playing: false,
+  playbackAbort: false,
+  playbackContext: null,
 };
 
 const els = {
@@ -22,6 +25,7 @@ const els = {
   demoButton: document.querySelector("#demoButton"),
   clearButton: document.querySelector("#clearButton"),
   naturalOnlyToggle: document.querySelector("#naturalOnlyToggle"),
+  viewScoreButton: document.querySelector("#viewScoreButton"),
   exportButton: document.querySelector("#exportButton"),
   playButton: document.querySelector("#playButton"),
   statusPill: document.querySelector("#statusPill"),
@@ -32,6 +36,9 @@ const els = {
   durationReadout: document.querySelector("#durationReadout"),
   noteTrail: document.querySelector("#noteTrail"),
   sheetSvg: document.querySelector("#sheetSvg"),
+  fullSheetSvg: document.querySelector("#fullSheetSvg"),
+  scoreDialog: document.querySelector("#scoreDialog"),
+  closeScoreButton: document.querySelector("#closeScoreButton"),
   pianoScene: document.querySelector("#pianoScene"),
 };
 
@@ -39,6 +46,13 @@ const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "
 const whitePitchClasses = new Set([0, 2, 4, 5, 7, 9, 11]);
 const blackPitchClasses = new Set([1, 3, 6, 8, 10]);
 const recordingWarmupMs = 500;
+const scoreWidth = 980;
+const scoreMargin = 44;
+const scoreRight = scoreWidth - scoreMargin;
+const scoreStartX = 148;
+const scoreSystemTop = 84;
+const scoreSystemGap = 240;
+const beatsPerMeasure = 4;
 
 initPiano();
 renderEmptySheet();
@@ -49,11 +63,14 @@ els.demoButton.addEventListener("click", loadDemo);
 els.clearButton.addEventListener("click", clearMelody);
 els.playButton.addEventListener("click", playMelody);
 els.exportButton.addEventListener("click", exportScore);
+els.viewScoreButton.addEventListener("click", openScoreDialog);
+els.closeScoreButton.addEventListener("click", () => els.scoreDialog.close());
 els.naturalOnlyToggle.addEventListener("change", handlePitchModeChange);
 window.addEventListener("resize", resizePiano);
 
 async function startRecording() {
   try {
+    stopPlayback();
     state.audioContext = new AudioContext();
     state.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -83,6 +100,7 @@ async function startRecording() {
     els.stopButton.disabled = false;
     els.playButton.disabled = true;
     els.exportButton.disabled = true;
+    els.viewScoreButton.disabled = true;
     renderEmptySheet();
     capturePitch();
   } catch (error) {
@@ -106,6 +124,7 @@ function stopRecording() {
   els.stopButton.disabled = true;
   els.playButton.disabled = !state.melody.length;
   els.exportButton.disabled = !state.melody.length;
+  els.viewScoreButton.disabled = !state.melody.length;
   renderMelody();
 }
 
@@ -180,8 +199,7 @@ function buildMelody(frames) {
     .map((note, index) => normalizeNoteDuration({
       ...note,
       start: index === 0 ? 0 : note.start - notes[0].start,
-    }))
-    .slice(0, 48);
+    }));
 }
 
 function normalizeNoteDuration(note) {
@@ -242,12 +260,8 @@ function renderNoteTrail(notes) {
 }
 
 function renderEmptySheet() {
-  els.sheetSvg.innerHTML = `
-    <rect x="0" y="0" width="980" height="330" fill="#fffdf8"></rect>
-    ${staffLines()}
-    <text x="54" y="176" font-size="84" font-family="Georgia, serif" fill="#1f2320">G</text>
-    <text x="178" y="176" font-size="22" fill="#697269">Record or load a demo to generate notation.</text>
-  `;
+  renderEmptyScore(els.sheetSvg);
+  renderEmptyScore(els.fullSheetSvg);
 }
 
 function renderSheet(notes) {
@@ -256,31 +270,149 @@ function renderSheet(notes) {
     return;
   }
 
-  const spacing = Math.max(46, Math.min(84, 780 / notes.length));
-  const noteShapes = notes
-    .map((note, index) => {
-      const x = 150 + index * spacing;
-      const labelY = 282;
-      return `
-        ${renderNoteGlyph(note, x)}
-        <text x="${x - 25}" y="${labelY}" font-size="13" fill="#697269">${note.note}</text>
-        <text x="${x - 25}" y="${labelY + 16}" font-size="11" fill="#9a9f97">${durationShortLabel(note.durationName)}</text>
-      `;
-    })
-    .join("");
+  renderScore(els.sheetSvg, notes, { preview: true });
+  renderScore(els.fullSheetSvg, notes, { preview: false });
+}
 
-  els.sheetSvg.innerHTML = `
-    <rect x="0" y="0" width="980" height="330" fill="#fffdf8"></rect>
-    ${staffLines()}
-    <text x="52" y="176" font-size="84" font-family="Georgia, serif" fill="#1f2320">G</text>
-    <line x1="118" y1="74" x2="118" y2="218" stroke="#1f2320" stroke-width="3"></line>
+function renderEmptyScore(svg) {
+  const height = 330;
+  svg.setAttribute("viewBox", `0 0 ${scoreWidth} ${height}`);
+  svg.dataset.scoreHeight = String(height);
+  svg.innerHTML = `
+    <rect x="0" y="0" width="${scoreWidth}" height="${height}" fill="#fffdf8"></rect>
+    ${staffLines(scoreSystemTop)}
+    <text x="54" y="176" font-size="84" font-family="Georgia, serif" fill="#1f2320">G</text>
+    <text x="178" y="176" font-size="22" fill="#697269">Record or load a demo to generate notation.</text>
+  `;
+}
+
+function renderScore(svg, notes, { preview }) {
+  const systems = layoutScore(notes);
+  const visibleSystems = preview ? systems.slice(0, 1) : systems;
+  const overflowCount = preview
+    ? systems.slice(1).reduce((total, system) => total + system.items.length, 0)
+    : 0;
+  const height = preview ? 330 : Math.max(330, 78 + systems.length * scoreSystemGap);
+  const content = visibleSystems.map((system) => renderSystem(system, preview)).join("");
+  const overflowMessage = overflowCount
+    ? `<text x="${scoreStartX}" y="306" font-size="15" font-weight="800" fill="#176a62">+ ${overflowCount} more notes in full score</text>`
+    : "";
+
+  svg.setAttribute("viewBox", `0 0 ${scoreWidth} ${height}`);
+  svg.dataset.scoreHeight = String(height);
+  svg.innerHTML = `
+    <rect x="0" y="0" width="${scoreWidth}" height="${height}" fill="#fffdf8"></rect>
+    ${content}
+    ${overflowMessage}
+  `;
+}
+
+function layoutScore(notes) {
+  const measures = groupNotesIntoMeasures(notes);
+  const systems = [];
+  let system = createScoreSystem(scoreSystemTop);
+
+  measures.forEach((measure) => {
+    const width = measureWidthFor(measure);
+    if (system.measures.length && system.cursor + width > scoreRight) {
+      systems.push(system);
+      system = createScoreSystem(scoreSystemTop + systems.length * scoreSystemGap);
+    }
+    appendMeasureToSystem(system, measure, width);
+  });
+
+  if (system.measures.length) systems.push(system);
+  return systems;
+}
+
+function createScoreSystem(top) {
+  return {
+    top,
+    cursor: scoreStartX,
+    measures: [],
+    items: [],
+    barlines: [122],
+  };
+}
+
+function groupNotesIntoMeasures(notes) {
+  const measures = [];
+  let measure = [];
+  let beatTotal = 0;
+
+  notes.forEach((note) => {
+    const beats = note.beats || 1;
+    if (measure.length && beatTotal + beats > beatsPerMeasure) {
+      measures.push(measure);
+      measure = [];
+      beatTotal = 0;
+    }
+
+    measure.push(note);
+    beatTotal += beats;
+
+    if (beatTotal >= beatsPerMeasure) {
+      measures.push(measure);
+      measure = [];
+      beatTotal = 0;
+    }
+  });
+
+  if (measure.length) measures.push(measure);
+  return measures;
+}
+
+function appendMeasureToSystem(system, measure, width) {
+  const available = Math.max(1, width - 36);
+  const gap = available / measure.length;
+
+  measure.forEach((note, index) => {
+    system.items.push({
+      note,
+      x: system.cursor + 18 + index * gap + gap / 2,
+    });
+  });
+
+  system.cursor += width;
+  system.measures.push(measure);
+  system.barlines.push(system.cursor);
+}
+
+function measureWidthFor(measure) {
+  const beatWidth = 42;
+  const noteWidth = 38;
+  const beats = measure.reduce((sum, note) => sum + (note.beats || 1), 0);
+  return Math.max(118, Math.min(360, beats * beatWidth + measure.length * noteWidth + 28));
+}
+
+function renderSystem(system, preview) {
+  const labelY = system.top + 198;
+  const barlines = system.barlines
+    .map((x) => `<line x1="${x}" y1="${system.top - 10}" x2="${x}" y2="${system.top + 134}" stroke="#1f2320" stroke-width="3"></line>`)
+    .join("");
+  const noteShapes = system.items
+    .map(({ note, x }) => `
+      ${renderNoteGlyph(note, x, system.top)}
+      <text x="${x - 24}" y="${labelY}" font-size="13" fill="#697269">${note.note}</text>
+      <text x="${x - 24}" y="${labelY + 16}" font-size="11" fill="#9a9f97">${durationShortLabel(note.durationName)}</text>
+    `)
+    .join("");
+  const systemLabel = preview
+    ? ""
+    : `<text x="${scoreMargin}" y="${system.top - 24}" font-size="12" fill="#9a9f97">${system.measures.length} measure${system.measures.length === 1 ? "" : "s"}</text>`;
+
+  return `
+    ${systemLabel}
+    ${staffLines(system.top)}
+    <text x="52" y="${system.top + 92}" font-size="84" font-family="Georgia, serif" fill="#1f2320">G</text>
+    ${barlines}
     ${noteShapes}
   `;
 }
 
-function renderNoteGlyph(note, x) {
-  const y = midiToSheetY(note.midi);
-  const stemUp = y > 132;
+function renderNoteGlyph(note, x, systemTop) {
+  const y = midiToSheetY(note.midi, systemTop);
+  const stemUp = y > systemTop + 48;
   const openHead = ["half", "dotted-half", "whole"].includes(note.durationName);
   const hasStem = note.durationName !== "whole";
   const stemY = stemUp ? y - 58 : y + 58;
@@ -299,7 +431,7 @@ function renderNoteGlyph(note, x) {
     : "";
 
   return `
-    ${ledgerLines(note.midi, x)}
+    ${ledgerLines(note.midi, x, systemTop)}
     ${head}
     ${stem}
     ${dot}
@@ -325,27 +457,27 @@ function durationShortLabel(durationName) {
   return labels[durationName] || "";
 }
 
-function staffLines() {
-  return [84, 110, 136, 162, 188]
-    .map((y) => `<line x1="44" y1="${y}" x2="936" y2="${y}" stroke="#1f2320" stroke-width="2"></line>`)
+function staffLines(systemTop) {
+  return [0, 26, 52, 78, 104]
+    .map((offset) => `<line x1="${scoreMargin}" y1="${systemTop + offset}" x2="${scoreRight}" y2="${systemTop + offset}" stroke="#1f2320" stroke-width="2"></line>`)
     .join("");
 }
 
-function midiToSheetY(midi) {
-  return 188 - (midi - 64) * 6.5;
+function midiToSheetY(midi, systemTop = scoreSystemTop) {
+  return systemTop + 104 - (midi - 64) * 6.5;
 }
 
-function ledgerLines(midi, x) {
-  const y = midiToSheetY(midi);
-  if (y >= 82 && y <= 190) return "";
+function ledgerLines(midi, x, systemTop) {
+  const y = midiToSheetY(midi, systemTop);
+  if (y >= systemTop - 2 && y <= systemTop + 106) return "";
   const lines = [];
-  if (y < 82) {
-    for (let lineY = 58; lineY >= y - 8; lineY -= 26) {
+  if (y < systemTop - 2) {
+    for (let lineY = systemTop - 26; lineY >= y - 8; lineY -= 26) {
       lines.push(`<line x1="${x - 20}" y1="${lineY}" x2="${x + 20}" y2="${lineY}" stroke="#1f2320" stroke-width="2"></line>`);
     }
   }
-  if (y > 190) {
-    for (let lineY = 214; lineY <= y + 8; lineY += 26) {
+  if (y > systemTop + 106) {
+    for (let lineY = systemTop + 130; lineY <= y + 8; lineY += 26) {
       lines.push(`<line x1="${x - 20}" y1="${lineY}" x2="${x + 20}" y2="${lineY}" stroke="#1f2320" stroke-width="2"></line>`);
     }
   }
@@ -354,25 +486,60 @@ function ledgerLines(midi, x) {
 
 async function playMelody() {
   if (!state.melody.length) return;
-  els.playButton.disabled = true;
-  const context = new AudioContext();
-
-  for (const note of state.melody) {
-    pressPianoKey(note.midi, note.duration);
-    playTone(context, midiToFrequency(note.midi), note.duration);
-    await sleep(note.duration * 1000);
+  if (state.playing) {
+    stopPlayback();
+    return;
   }
 
-  await context.close();
-  els.playButton.disabled = false;
+  state.playing = true;
+  state.playbackAbort = false;
+  const context = new AudioContext();
+  state.playbackContext = context;
+  els.playButton.textContent = "Stop playback";
+
+  try {
+    for (const note of state.melody) {
+      if (state.playbackAbort) break;
+      pressPianoKey(note.midi, note.duration);
+      playTone(context, midiToFrequency(note.midi), note.duration);
+      await sleepDuringPlayback(note.duration * 1000);
+    }
+  } finally {
+    if (context.state !== "closed") {
+      try {
+        await context.close();
+      } catch (error) {
+        // The stop button may have already closed the context.
+      }
+    }
+    state.playing = false;
+    state.playbackAbort = false;
+    state.playbackContext = null;
+    els.playButton.textContent = "Play on piano";
+  }
+}
+
+function stopPlayback() {
+  if (!state.playing) return;
+  state.playbackAbort = true;
+  state.playbackContext?.close().catch(() => {});
+}
+
+async function sleepDuringPlayback(ms) {
+  const interval = 40;
+  const end = performance.now() + ms;
+  while (!state.playbackAbort && performance.now() < end) {
+    await sleep(Math.min(interval, end - performance.now()));
+  }
 }
 
 function exportScore() {
   if (!state.melody.length) return;
-  const clone = els.sheetSvg.cloneNode(true);
+  const clone = els.fullSheetSvg.cloneNode(true);
+  const height = clone.dataset.scoreHeight || "330";
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  clone.setAttribute("width", "980");
-  clone.setAttribute("height", "330");
+  clone.setAttribute("width", String(scoreWidth));
+  clone.setAttribute("height", height);
   const source = `<?xml version="1.0" encoding="UTF-8"?>\n${clone.outerHTML}`;
   const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -383,6 +550,15 @@ function exportScore() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function openScoreDialog() {
+  if (!state.melody.length) return;
+  if (typeof els.scoreDialog.showModal === "function") {
+    els.scoreDialog.showModal();
+  } else {
+    els.scoreDialog.setAttribute("open", "");
+  }
 }
 
 function playTone(context, frequency, duration) {
@@ -612,10 +788,12 @@ function loadDemo() {
   els.frequencyReadout.textContent = "Demo melody ready for playback.";
   els.playButton.disabled = false;
   els.exportButton.disabled = false;
+  els.viewScoreButton.disabled = false;
   renderMelody();
 }
 
 function clearMelody() {
+  stopPlayback();
   state.rawFrames = [];
   state.melody = [];
   state.firstPitchAt = 0;
@@ -627,6 +805,8 @@ function clearMelody() {
   els.noteTrail.innerHTML = "";
   els.playButton.disabled = true;
   els.exportButton.disabled = true;
+  els.viewScoreButton.disabled = true;
+  if (els.scoreDialog.open) els.scoreDialog.close();
   renderEmptySheet();
 }
 

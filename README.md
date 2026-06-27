@@ -36,5 +36,5 @@ http://localhost:4173/HumToKeys/
 - Pitch capture uses a tolerance window so small human pitch wobble does not immediately create accidental sharps/flats.
 - Recording waits for a half-second of clear pitch before writing notes, which helps ignore the first slide into a note.
 - Natural-notes-only mode can snap recorded melodies away from sharps/flats.
-- The sheet renderer is a lightweight SVG notation view with score export.
+- The sheet renderer is a lightweight SVG notation view with measure-safe line wrapping, full-score view, and score export.
 - The piano playback is synthesized in the browser and animated with a self-contained 3D canvas renderer.
