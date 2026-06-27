@@ -6,6 +6,16 @@ Live app:
 
 https://zivcohen-projects.github.io/HumToKeys/
 
+## GitHub Pages
+
+In the GitHub repo, go to **Settings -> Pages** and set:
+
+- Source: **Deploy from a branch**
+- Branch: **main**
+- Folder: **/(root)**
+
+After GitHub saves that setting, the app will be available at the live app URL above.
+
 ## Run locally
 
 Because microphone access requires HTTPS or localhost, serve the folder instead of opening the HTML file directly.
