@@ -2,6 +2,10 @@
 
 A browser app that records a sung or hummed melody, estimates pitch with the Web Audio API, turns the result into a simple generated sheet, and plays it back on a canvas-rendered 3D piano with animated key presses.
 
+Live app:
+
+https://zivcohen-projects.github.io/HumToKeys/
+
 ## Run locally
 
 Because microphone access requires HTTPS or localhost, serve the folder instead of opening the HTML file directly.
