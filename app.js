@@ -17,6 +17,7 @@ const els = {
   stopButton: document.querySelector("#stopButton"),
   demoButton: document.querySelector("#demoButton"),
   clearButton: document.querySelector("#clearButton"),
+  exportButton: document.querySelector("#exportButton"),
   playButton: document.querySelector("#playButton"),
   statusPill: document.querySelector("#statusPill"),
   currentNote: document.querySelector("#currentNote"),
@@ -41,6 +42,7 @@ els.stopButton.addEventListener("click", stopRecording);
 els.demoButton.addEventListener("click", loadDemo);
 els.clearButton.addEventListener("click", clearMelody);
 els.playButton.addEventListener("click", playMelody);
+els.exportButton.addEventListener("click", exportScore);
 window.addEventListener("resize", resizePiano);
 
 async function startRecording() {
@@ -69,6 +71,7 @@ async function startRecording() {
     els.recordButton.disabled = true;
     els.stopButton.disabled = false;
     els.playButton.disabled = true;
+    els.exportButton.disabled = true;
     renderEmptySheet();
     capturePitch();
   } catch (error) {
@@ -91,6 +94,7 @@ function stopRecording() {
   els.recordButton.disabled = false;
   els.stopButton.disabled = true;
   els.playButton.disabled = !state.melody.length;
+  els.exportButton.disabled = !state.melody.length;
   renderMelody();
 }
 
@@ -150,17 +154,41 @@ function buildMelody(frames) {
   if (current) notes.push(current);
   return notes
     .filter((note) => note.duration >= 0.12)
-    .map((note, index) => ({
+    .map((note, index) => normalizeNoteDuration({
       ...note,
       start: index === 0 ? 0 : note.start - notes[0].start,
-      duration: quantizeDuration(note.duration),
     }))
     .slice(0, 48);
 }
 
-function quantizeDuration(duration) {
-  const grid = 0.25;
-  return Math.max(grid, Math.round(duration / grid) * grid);
+function normalizeNoteDuration(note) {
+  const notation = getNotationForDuration(note.duration);
+  return {
+    ...note,
+    duration: notation.seconds,
+    beats: notation.beats,
+    durationName: notation.name,
+    durationLabel: notation.label,
+  };
+}
+
+function getNotationForDuration(duration) {
+  const beatSeconds = 0.5;
+  const beats = Math.max(0.5, duration / beatSeconds);
+  const choices = [
+    { beats: 0.5, name: "eighth", label: "eighth note" },
+    { beats: 1, name: "quarter", label: "quarter note" },
+    { beats: 2, name: "half", label: "half note" },
+    { beats: 3, name: "dotted-half", label: "dotted half note" },
+    { beats: 4, name: "whole", label: "whole note" },
+  ];
+  const closest = choices.reduce((best, candidate) =>
+    Math.abs(candidate.beats - beats) < Math.abs(best.beats - beats) ? candidate : best,
+  );
+  return {
+    ...closest,
+    seconds: closest.beats * beatSeconds,
+  };
 }
 
 function renderMelody() {
@@ -185,7 +213,7 @@ function renderNoteTrail(notes) {
   els.noteTrail.innerHTML = "";
   notes.forEach((note) => {
     const item = document.createElement("li");
-    item.textContent = `${note.note} - ${note.duration.toFixed(2)}s`;
+    item.textContent = `${note.note} - ${note.durationLabel || "note"}`;
     els.noteTrail.append(item);
   });
 }
@@ -209,16 +237,11 @@ function renderSheet(notes) {
   const noteShapes = notes
     .map((note, index) => {
       const x = 150 + index * spacing;
-      const y = midiToSheetY(note.midi);
-      const stemUp = y > 132;
-      const stemY = stemUp ? y - 58 : y + 58;
-      const stemX = stemUp ? x + 11 : x - 11;
       const labelY = 282;
       return `
-        ${ledgerLines(note.midi, x)}
-        <ellipse cx="${x}" cy="${y}" rx="14" ry="10" transform="rotate(-18 ${x} ${y})" fill="#1f2320"></ellipse>
-        <line x1="${stemX}" y1="${y}" x2="${stemX}" y2="${stemY}" stroke="#1f2320" stroke-width="3"></line>
-        <text x="${x - 18}" y="${labelY}" font-size="13" fill="#697269">${note.note}</text>
+        ${renderNoteGlyph(note, x)}
+        <text x="${x - 25}" y="${labelY}" font-size="13" fill="#697269">${note.note}</text>
+        <text x="${x - 25}" y="${labelY + 16}" font-size="11" fill="#9a9f97">${durationShortLabel(note.durationName)}</text>
       `;
     })
     .join("");
@@ -230,6 +253,53 @@ function renderSheet(notes) {
     <line x1="118" y1="74" x2="118" y2="218" stroke="#1f2320" stroke-width="3"></line>
     ${noteShapes}
   `;
+}
+
+function renderNoteGlyph(note, x) {
+  const y = midiToSheetY(note.midi);
+  const stemUp = y > 132;
+  const openHead = ["half", "dotted-half", "whole"].includes(note.durationName);
+  const hasStem = note.durationName !== "whole";
+  const stemY = stemUp ? y - 58 : y + 58;
+  const stemX = stemUp ? x + 11 : x - 11;
+  const head = openHead
+    ? `<ellipse cx="${x}" cy="${y}" rx="14" ry="10" transform="rotate(-18 ${x} ${y})" fill="#fffdf8" stroke="#1f2320" stroke-width="3"></ellipse>`
+    : `<ellipse cx="${x}" cy="${y}" rx="14" ry="10" transform="rotate(-18 ${x} ${y})" fill="#1f2320"></ellipse>`;
+  const stem = hasStem
+    ? `<line x1="${stemX}" y1="${y}" x2="${stemX}" y2="${stemY}" stroke="#1f2320" stroke-width="3"></line>`
+    : "";
+  const dot = note.durationName === "dotted-half"
+    ? `<circle cx="${x + 27}" cy="${y - 2}" r="4" fill="#1f2320"></circle>`
+    : "";
+  const flag = note.durationName === "eighth" && hasStem
+    ? renderEighthFlag(stemX, stemY, stemUp)
+    : "";
+
+  return `
+    ${ledgerLines(note.midi, x)}
+    ${head}
+    ${stem}
+    ${dot}
+    ${flag}
+  `;
+}
+
+function renderEighthFlag(stemX, stemY, stemUp) {
+  if (stemUp) {
+    return `<path d="M ${stemX} ${stemY} C ${stemX + 26} ${stemY + 8}, ${stemX + 28} ${stemY + 28}, ${stemX + 8} ${stemY + 34}" fill="none" stroke="#1f2320" stroke-width="3" stroke-linecap="round"></path>`;
+  }
+  return `<path d="M ${stemX} ${stemY} C ${stemX + 26} ${stemY - 8}, ${stemX + 28} ${stemY - 28}, ${stemX + 8} ${stemY - 34}" fill="none" stroke="#1f2320" stroke-width="3" stroke-linecap="round"></path>`;
+}
+
+function durationShortLabel(durationName) {
+  const labels = {
+    eighth: "1/8",
+    quarter: "1/4",
+    half: "1/2",
+    "dotted-half": "dotted 1/2",
+    whole: "whole",
+  };
+  return labels[durationName] || "";
 }
 
 function staffLines() {
@@ -272,6 +342,24 @@ async function playMelody() {
 
   await context.close();
   els.playButton.disabled = false;
+}
+
+function exportScore() {
+  if (!state.melody.length) return;
+  const clone = els.sheetSvg.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", "980");
+  clone.setAttribute("height", "330");
+  const source = `<?xml version="1.0" encoding="UTF-8"?>\n${clone.outerHTML}`;
+  const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `humtokeys-score-${new Date().toISOString().slice(0, 10)}.svg`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function playTone(context, frequency, duration) {
@@ -465,18 +553,42 @@ function findNextWhite(midi) {
 }
 
 function loadDemo() {
-  const demo = [60, 62, 64, 67, 64, 62, 60, 67, 69, 67, 64, 62, 60];
-  state.melody = demo.map((midi, index) => ({
-    midi,
-    note: midiToNoteName(midi),
-    frequency: midiToFrequency(midi),
-    start: index * 0.42,
-    duration: index % 4 === 3 ? 0.7 : 0.42,
-  }));
+  const demo = [
+    [60, 0.5],
+    [62, 0.5],
+    [64, 1],
+    [67, 2],
+    [64, 1],
+    [62, 0.5],
+    [60, 0.5],
+    [67, 3],
+    [69, 1],
+    [67, 1],
+    [64, 2],
+    [62, 1],
+    [60, 4],
+  ];
+  let cursor = 0;
+  state.melody = demo.map(([midi, beats]) => {
+    const notation = getNotationForDuration(beats * 0.5);
+    const note = {
+      midi,
+      note: midiToNoteName(midi),
+      frequency: midiToFrequency(midi),
+      start: cursor,
+      duration: notation.seconds,
+      beats: notation.beats,
+      durationName: notation.name,
+      durationLabel: notation.label,
+    };
+    cursor += notation.seconds;
+    return note;
+  });
   els.statusPill.textContent = "Demo loaded";
   els.currentNote.textContent = state.melody[0].note;
   els.frequencyReadout.textContent = "Demo melody ready for playback.";
   els.playButton.disabled = false;
+  els.exportButton.disabled = false;
   renderMelody();
 }
 
@@ -489,6 +601,7 @@ function clearMelody() {
   els.durationReadout.textContent = "0.0s";
   els.noteTrail.innerHTML = "";
   els.playButton.disabled = true;
+  els.exportButton.disabled = true;
   renderEmptySheet();
 }
 

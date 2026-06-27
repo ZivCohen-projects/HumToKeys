@@ -98,6 +98,13 @@ h2 {
   flex-wrap: wrap;
 }
 
+.score-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button {
@@ -286,6 +293,10 @@ h2 {
   .primary-button,
   .secondary-button,
   .ghost-button {
+    width: 100%;
+  }
+
+  .score-actions {
     width: 100%;
   }
 }
