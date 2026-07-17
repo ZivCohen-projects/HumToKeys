@@ -46,6 +46,8 @@ const els = {
 const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const whitePitchClasses = new Set([0, 2, 4, 5, 7, 9, 11]);
 const blackPitchClasses = new Set([1, 3, 6, 8, 10]);
+const pianoLowestMidi = 21;
+const pianoHighestMidi = 108;
 const recordingWarmupMs = 500;
 const scoreWidth = 980;
 const scoreMargin = 44;
@@ -748,7 +750,7 @@ function initPiano() {
 
   const keys = new Map();
   const whiteMidis = [];
-  for (let midi = 48; midi <= 84; midi += 1) {
+  for (let midi = pianoLowestMidi; midi <= pianoHighestMidi; midi += 1) {
     if (whitePitchClasses.has(midi % 12)) whiteMidis.push(midi);
   }
 
@@ -760,7 +762,7 @@ function initPiano() {
     whitePositions.set(midi, index);
   });
 
-  for (let midi = 49; midi <= 83; midi += 1) {
+  for (let midi = pianoLowestMidi + 1; midi < pianoHighestMidi; midi += 1) {
     if (!blackPitchClasses.has(midi % 12)) continue;
     const previousWhite = findPreviousWhite(midi);
     const nextWhite = findNextWhite(midi);
@@ -803,55 +805,88 @@ function drawPiano() {
   const now = performance.now();
   ctx.clearRect(0, 0, width, height);
 
-  const keyWidth = Math.min(34, (width - 90) / whiteCount);
+  const keyWidth = Math.max(7.5, Math.min(22, (width - 48) / whiteCount));
   const startX = (width - keyWidth * whiteCount) / 2;
-  const topY = height * 0.23;
-  const keyDepth = height * 0.48;
-  const perspective = Math.min(72, height * 0.18);
-  const bodyY = topY - 34;
+  const topY = height * 0.28;
+  const keyDepth = height * 0.5;
+  const perspective = Math.min(58, height * 0.15);
+  const bodyY = topY - 42;
 
   const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, "#30352f");
-  gradient.addColorStop(1, "#111311");
+  gradient.addColorStop(0, "#211a17");
+  gradient.addColorStop(0.52, "#141b18");
+  gradient.addColorStop(1, "#0b0d0c");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
-  drawRoundedRect(ctx, startX - 34, bodyY, keyWidth * whiteCount + 68, 72, 10, "#5b3124");
-  drawPerspectivePanel(ctx, startX - 28, topY - 16, keyWidth * whiteCount + 56, keyDepth + 48, perspective, "#3b1f18");
+  drawPianoBackdrop(ctx, width, height);
+  drawRoundedRect(ctx, startX - 28, bodyY, keyWidth * whiteCount + 56, 82, 8, "#4b3025");
+  drawPerspectivePanel(ctx, startX - 22, topY - 16, keyWidth * whiteCount + 44, keyDepth + 46, perspective, "#2b1b17");
 
   [...keys.values()]
     .filter((key) => !key.black)
     .forEach((key) => {
       key.pressed = key.pressUntil > now;
       const x = startX + key.index * keyWidth;
-      const press = key.pressed ? 12 : 0;
-      drawWhiteKey(ctx, x, topY + press, keyWidth - 2, keyDepth, perspective, key.pressed);
+      const press = key.pressed ? Math.max(5, keyDepth * 0.035) : 0;
+      drawWhiteKey(ctx, x, topY + press, Math.max(4, keyWidth - 1.2), keyDepth, perspective, key.pressed);
     });
 
   [...keys.values()]
     .filter((key) => key.black)
     .forEach((key) => {
       key.pressed = key.pressUntil > now;
-      const x = startX + key.index * keyWidth - keyWidth * 0.3;
-      const press = key.pressed ? 10 : 0;
-      drawBlackKey(ctx, x, topY + press, keyWidth * 0.6, keyDepth * 0.58, perspective * 0.62, key.pressed);
+      const x = startX + key.index * keyWidth - keyWidth * 0.31;
+      const press = key.pressed ? Math.max(4, keyDepth * 0.035) : 0;
+      drawBlackKey(ctx, x, topY + press, keyWidth * 0.62, keyDepth * 0.58, perspective * 0.62, key.pressed);
     });
 
-  ctx.fillStyle = "rgba(255,255,255,0.72)";
-  ctx.font = "700 13px Inter, sans-serif";
-  ctx.fillText("3D piano playback", startX, height - 28);
+  drawPianoLabels(ctx, startX, keyWidth, whiteCount, height);
+}
+
+function drawPianoBackdrop(ctx, width, height) {
+  ctx.strokeStyle = "rgba(222, 204, 166, 0.12)";
+  ctx.lineWidth = 1;
+  for (let group = 0; group < 5; group += 1) {
+    const y = 42 + group * 9;
+    ctx.beginPath();
+    ctx.moveTo(28, y);
+    ctx.lineTo(width - 28, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(143, 111, 53, 0.14)";
+  for (let x = 58; x < width; x += 132) {
+    ctx.beginPath();
+    ctx.moveTo(x, 22);
+    ctx.lineTo(x, height - 28);
+    ctx.stroke();
+  }
+}
+
+function drawPianoLabels(ctx, startX, keyWidth, whiteCount, height) {
+  ctx.fillStyle = "rgba(239, 232, 220, 0.72)";
+  ctx.font = "800 12px Inter, sans-serif";
+  ctx.fillText("88-key concert range", startX, height - 28);
+  ctx.textAlign = "right";
+  ctx.fillText("A0", startX + keyWidth * 1.5, height - 28);
+  ctx.textAlign = "center";
+  ctx.fillText("C4", startX + keyWidth * 23, height - 28);
+  ctx.textAlign = "left";
+  ctx.fillText("C8", startX + keyWidth * (whiteCount - 1), height - 28);
+  ctx.textAlign = "start";
 }
 
 function drawWhiteKey(ctx, x, y, width, depth, perspective, pressed) {
-  const topColor = pressed ? "#f4c95d" : "#fffaf0";
-  const sideColor = pressed ? "#dba83b" : "#d8d2c4";
+  const topColor = pressed ? "#c89c4a" : "#eee7d8";
+  const sideColor = pressed ? "#9d7839" : "#bdb4a5";
   drawPerspectivePanel(ctx, x, y, width, depth, perspective, sideColor);
-  drawKeyTop(ctx, x, y, width, depth, perspective, topColor, "#1f2320");
+  drawKeyTop(ctx, x, y, width, depth, perspective, topColor, "#181311");
 }
 
 function drawBlackKey(ctx, x, y, width, depth, perspective, pressed) {
-  const topColor = pressed ? "#f4c95d" : "#101110";
-  const sideColor = pressed ? "#b98522" : "#050605";
+  const topColor = pressed ? "#b48a3c" : "#090909";
+  const sideColor = pressed ? "#7f5d25" : "#020202";
   drawPerspectivePanel(ctx, x, y, width, depth, perspective, sideColor);
   drawKeyTop(ctx, x, y, width, depth, perspective, topColor, "#000000");
 }
@@ -901,18 +936,18 @@ function pressPianoKey(midi, duration) {
 }
 
 function clampMidiToPiano(midi) {
-  return Math.max(48, Math.min(84, midi));
+  return Math.max(pianoLowestMidi, Math.min(pianoHighestMidi, midi));
 }
 
 function findPreviousWhite(midi) {
-  for (let next = midi - 1; next >= 48; next -= 1) {
+  for (let next = midi - 1; next >= pianoLowestMidi; next -= 1) {
     if (whitePitchClasses.has(next % 12)) return next;
   }
   return midi;
 }
 
 function findNextWhite(midi) {
-  for (let next = midi + 1; next <= 84; next += 1) {
+  for (let next = midi + 1; next <= pianoHighestMidi; next += 1) {
     if (whitePitchClasses.has(next % 12)) return next;
   }
   return midi;
