@@ -1,4 +1,6 @@
 import { estimatePitchYin } from "./pitch-detector.mjs";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const state = {
   audioContext: null,
@@ -783,34 +785,285 @@ function playTone(context, frequency, duration) {
 }
 
 function initPiano() {
+  const canvas = document.createElement("canvas");
+  canvas.className = "webgl-piano";
+  canvas.setAttribute("aria-label", "Interactive 3D 88-key concert grand piano");
+  els.pianoScene.replaceChildren(canvas);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x080a0b);
+  scene.fog = new THREE.Fog(0x080a0b, 17, 34);
+
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+  camera.position.set(11.5, 8.1, 15.2);
+
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(0, -0.15, 0.85);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.07;
+  controls.enablePan = false;
+  controls.minDistance = 10;
+  controls.maxDistance = 24;
+  controls.minPolarAngle = Math.PI / 5;
+  controls.maxPolarAngle = Math.PI / 2.06;
+  controls.update();
+
+  addPianoStudio(scene);
+  const { root, keys, pickables } = buildGrandPianoModel();
+  scene.add(root);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let pointerStart = null;
+  canvas.addEventListener("pointerdown", (event) => {
+    pointerStart = { x: event.clientX, y: event.clientY };
+  });
+  canvas.addEventListener("pointerup", (event) => {
+    if (!pointerStart || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 6) return;
+    const rect = canvas.getBoundingClientRect();
+    pointer.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObjects(pickables, false)[0];
+    const key = hit?.object.userData.pianoKey;
+    if (key) previewPianoKey(key.midi);
+  });
+
+  const resize = () => {
+    const rect = els.pianoScene.getBoundingClientRect();
+    renderer.setSize(Math.max(1, rect.width), Math.max(1, rect.height), false);
+    camera.aspect = rect.width / Math.max(1, rect.height);
+    camera.updateProjectionMatrix();
+  };
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(els.pianoScene);
+  resize();
+
+  state.piano = { renderer, scene, camera, controls, keys, resizeObserver };
+  animatePiano();
+}
+
+function addPianoStudio(scene) {
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(52, 52),
+    new THREE.MeshStandardMaterial({ color: 0x121615, metalness: 0.15, roughness: 0.72 }),
+  );
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -3.05;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const halo = new THREE.Mesh(
+    new THREE.CircleGeometry(10, 80),
+    new THREE.MeshBasicMaterial({ color: 0x5f3a17, transparent: true, opacity: 0.16 }),
+  );
+  halo.rotation.x = -Math.PI / 2;
+  halo.position.y = -3.035;
+  scene.add(halo);
+
+  scene.add(new THREE.HemisphereLight(0xd8e8ff, 0x29150c, 1.65));
+
+  const keyLight = new THREE.DirectionalLight(0xffe3af, 4.2);
+  keyLight.position.set(7, 11, 8);
+  keyLight.castShadow = true;
+  keyLight.shadow.mapSize.set(2048, 2048);
+  keyLight.shadow.camera.near = 1;
+  keyLight.shadow.camera.far = 30;
+  keyLight.shadow.camera.left = -11;
+  keyLight.shadow.camera.right = 11;
+  keyLight.shadow.camera.top = 11;
+  keyLight.shadow.camera.bottom = -11;
+  scene.add(keyLight);
+
+  const rimLight = new THREE.DirectionalLight(0x5f8fb2, 2.1);
+  rimLight.position.set(-11, 7, -9);
+  scene.add(rimLight);
+
+  const warmLight = new THREE.PointLight(0xc2782c, 18, 16, 2);
+  warmLight.position.set(-4, 3.5, 5);
+  scene.add(warmLight);
+}
+
+function buildGrandPianoModel() {
   const keys = new Map();
   const whiteMidis = [];
   for (let midi = pianoLowestMidi; midi <= pianoHighestMidi; midi += 1) {
     if (whitePitchClasses.has(midi % 12)) whiteMidis.push(midi);
   }
 
-  const piano = document.createElement("div");
-  piano.className = "concert-piano";
-  piano.innerHTML = `
-    <div class="piano-lid" aria-hidden="true"><span></span></div>
-    <div class="piano-fallboard" aria-hidden="true">
-      <span>HumToKeys</span>
-      <small>CONCERT 88</small>
-    </div>
-    <div class="piano-keybed">
-      <div class="piano-keyboard" role="group" aria-label="Interactive 88-key piano"></div>
-    </div>
-    <div class="piano-pedals" aria-hidden="true"><i></i><i></i><i></i></div>
-  `;
-  const keyboard = piano.querySelector(".piano-keyboard");
-  els.pianoScene.replaceChildren(piano);
+  const root = new THREE.Group();
+  root.rotation.y = -0.12;
+  root.position.y = -0.35;
+
+  const ebony = new THREE.MeshPhysicalMaterial({
+    color: 0x160c0a,
+    roughness: 0.2,
+    metalness: 0.12,
+    clearcoat: 0.95,
+    clearcoatRoughness: 0.13,
+  });
+  const edgeWood = new THREE.MeshPhysicalMaterial({
+    color: 0x3e1710,
+    roughness: 0.26,
+    metalness: 0.06,
+    clearcoat: 0.78,
+    clearcoatRoughness: 0.2,
+  });
+  const brass = new THREE.MeshStandardMaterial({ color: 0xc99232, metalness: 0.82, roughness: 0.24 });
+  const stringMaterial = new THREE.MeshStandardMaterial({ color: 0xd3a54b, metalness: 0.9, roughness: 0.18 });
+
+  const bodyShape = new THREE.Shape();
+  bodyShape.moveTo(-6.55, -1.95);
+  bodyShape.lineTo(6.15, -1.95);
+  bodyShape.lineTo(6.55, 0.85);
+  bodyShape.bezierCurveTo(6.8, 3.8, 4.5, 5.45, 1.1, 5.7);
+  bodyShape.bezierCurveTo(-2.7, 5.98, -6.5, 4.65, -7.15, 2.1);
+  bodyShape.bezierCurveTo(-7.45, 0.3, -7.1, -1.1, -6.55, -1.95);
+
+  const body = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(bodyShape, {
+      depth: 0.88,
+      bevelEnabled: true,
+      bevelSegments: 4,
+      bevelSize: 0.16,
+      bevelThickness: 0.13,
+      curveSegments: 30,
+    }),
+    ebony,
+  );
+  body.geometry.rotateX(-Math.PI / 2);
+  body.position.y = -1.56;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  root.add(body);
+
+  const rim = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(bodyShape, {
+      depth: 0.14,
+      bevelEnabled: true,
+      bevelSegments: 3,
+      bevelSize: 0.1,
+      bevelThickness: 0.08,
+      curveSegments: 30,
+    }),
+    edgeWood,
+  );
+  rim.geometry.rotateX(-Math.PI / 2);
+  rim.position.y = -0.58;
+  rim.castShadow = true;
+  root.add(rim);
+
+  const soundboard = new THREE.Mesh(
+    new THREE.CircleGeometry(4.7, 56, 0, Math.PI * 1.72),
+    new THREE.MeshStandardMaterial({ color: 0x7d4b1f, roughness: 0.38, metalness: 0.08 }),
+  );
+  soundboard.rotation.x = -Math.PI / 2;
+  soundboard.rotation.z = 0.54;
+  soundboard.scale.set(1.26, 0.9, 1);
+  soundboard.position.set(0.2, -0.43, -1.5);
+  root.add(soundboard);
+
+  for (let index = 0; index < 34; index += 1) {
+    const stringLength = 2.2 + (index / 33) * 4.3;
+    const string = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, stringLength, 6), stringMaterial);
+    string.rotation.z = Math.PI / 2;
+    string.rotation.y = -0.42 + (index / 33) * 0.88;
+    string.position.set(-2.2 + index * 0.12, -0.3, -0.7 + index * 0.045);
+    root.add(string);
+  }
+
+  const lid = new THREE.Mesh(
+    new THREE.BoxGeometry(10.1, 0.16, 5.7),
+    ebony,
+  );
+  lid.position.set(-0.55, 2.95, -0.95);
+  lid.rotation.x = -0.48;
+  lid.rotation.z = -0.06;
+  lid.castShadow = true;
+  root.add(lid);
+
+  const lidRim = new THREE.Mesh(new THREE.BoxGeometry(10.3, 0.09, 0.1), edgeWood);
+  lidRim.position.set(-0.55, 4.25, -2.25);
+  lidRim.rotation.x = -0.48;
+  lidRim.rotation.z = -0.06;
+  root.add(lidRim);
+
+  const lidProp = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 3.55, 12), brass);
+  lidProp.position.set(3.25, 0.82, -1.4);
+  lidProp.rotation.z = -0.2;
+  lidProp.rotation.x = 0.15;
+  root.add(lidProp);
+
+  const keyboardBed = new THREE.Mesh(new THREE.BoxGeometry(12.85, 0.36, 2.85), edgeWood);
+  keyboardBed.position.set(0, -0.22, 2.8);
+  keyboardBed.castShadow = true;
+  keyboardBed.receiveShadow = true;
+  root.add(keyboardBed);
+
+  const fallboard = new THREE.Mesh(new THREE.BoxGeometry(12.55, 0.74, 0.19), ebony);
+  fallboard.position.set(0, 0.62, 1.38);
+  fallboard.castShadow = true;
+  root.add(fallboard);
+
+  const musicDesk = new THREE.Mesh(new THREE.BoxGeometry(3.1, 1.45, 0.1), edgeWood);
+  musicDesk.position.set(0, 1.72, 0.7);
+  musicDesk.rotation.x = -0.18;
+  musicDesk.castShadow = true;
+  root.add(musicDesk);
+
+  const keyboardRail = new THREE.Mesh(new THREE.BoxGeometry(12.72, 0.24, 0.14), ebony);
+  keyboardRail.position.set(0, -0.43, 4.25);
+  root.add(keyboardRail);
+
+  const legPositions = [
+    [-5.1, 3.45],
+    [5.0, 3.45],
+    [-4.8, -2.5],
+  ];
+  legPositions.forEach(([x, z]) => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.5, 2.35, 18), ebony);
+    leg.position.set(x, -1.82, z);
+    leg.castShadow = true;
+    root.add(leg);
+
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.57, 0.66, 0.18, 18), edgeWood);
+    foot.position.set(x, -2.98, z);
+    foot.castShadow = true;
+    root.add(foot);
+  });
+
+  [-0.34, 0, 0.34].forEach((x) => {
+    const pedal = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 12), brass);
+    pedal.scale.set(1.7, 0.5, 0.8);
+    pedal.position.set(x, -2.34, 4.12);
+    pedal.castShadow = true;
+    root.add(pedal);
+  });
 
   const whitePositions = new Map();
+  const pickables = [];
+  const whiteSpacing = 0.24;
+  const keyboardStart = -((whiteMidis.length - 1) * whiteSpacing) / 2;
 
   whiteMidis.forEach((midi, index) => {
-    const element = buildPianoKey(midi, index, false, whiteMidis.length);
-    keyboard.append(element);
-    const key = { midi, index, black: false, pressed: false, pressUntil: 0, element };
+    const key = buildThreePianoKey(
+      midi,
+      keyboardStart + index * whiteSpacing,
+      false,
+      index,
+      root,
+      pickables,
+    );
     keys.set(midi, key);
     whitePositions.set(midi, index);
   });
@@ -821,39 +1074,44 @@ function initPiano() {
     const nextWhite = findNextWhite(midi);
     if (!whitePositions.has(previousWhite) || !whitePositions.has(nextWhite)) continue;
     const index = (whitePositions.get(previousWhite) + whitePositions.get(nextWhite)) / 2;
-    const element = buildPianoKey(midi, index, true, whiteMidis.length);
-    keyboard.append(element);
-    keys.set(midi, {
+    const key = buildThreePianoKey(
       midi,
+      keyboardStart + index * whiteSpacing,
+      true,
       index,
-      black: true,
-      pressed: false,
-      pressUntil: 0,
-      element,
-    });
+      root,
+      pickables,
+    );
+    keys.set(midi, key);
   }
 
-  keyboard.addEventListener("pointerdown", previewPianoKey);
-  state.piano = { keys, whiteCount: whiteMidis.length };
-  animatePiano();
+  return { root, keys, pickables };
 }
 
-function buildPianoKey(midi, index, black, whiteCount) {
-  const key = document.createElement("button");
-  const noteName = midiToNoteName(midi);
-  key.type = "button";
-  key.className = `piano-key ${black ? "piano-key--black" : "piano-key--white"}`;
-  key.dataset.midi = midi;
-  key.setAttribute("aria-label", `${noteName} ${black ? "black" : "white"} piano key`);
+function buildThreePianoKey(midi, x, black, index, root, pickables) {
+  const pivot = new THREE.Group();
+  pivot.position.set(x, black ? 0.04 : 0, 1.46);
+  root.add(pivot);
 
-  if (black) {
-    key.style.setProperty("--black-position", `${(index / whiteCount) * 100}%`);
-  } else {
-    key.style.setProperty("--white-position", `${(index / whiteCount) * 100}%`);
-    if (noteName.startsWith("C")) key.dataset.label = noteName;
-  }
+  const material = new THREE.MeshStandardMaterial({
+    color: black ? 0x08090b : 0xf0ece1,
+    metalness: black ? 0.6 : 0.08,
+    roughness: black ? 0.18 : 0.26,
+    emissive: 0x000000,
+    emissiveIntensity: 0.8,
+  });
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(black ? 0.148 : 0.226, black ? 0.18 : 0.145, black ? 1.58 : 2.55),
+    material,
+  );
+  mesh.position.set(0, black ? 0.05 : -0.07, black ? 0.79 : 1.275);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  pivot.add(mesh);
 
-  key.innerHTML = '<span class="key-surface"></span><span class="key-front"></span>';
+  const key = { midi, index, black, pressed: false, pressUntil: 0, pivot, mesh, material };
+  mesh.userData.pianoKey = key;
+  pickables.push(mesh);
   return key;
 }
 
@@ -862,18 +1120,18 @@ function animatePiano() {
   const now = performance.now();
   state.piano.keys.forEach((key) => {
     const pressed = key.pressUntil > now;
-    if (pressed === key.pressed) return;
     key.pressed = pressed;
-    key.element.classList.toggle("is-pressed", pressed);
-    key.element.setAttribute("aria-pressed", String(pressed));
+    const targetRotation = pressed ? 0.068 : 0;
+    key.pivot.rotation.x += (targetRotation - key.pivot.rotation.x) * 0.28;
+    const targetEmission = pressed ? 0x9a4e0c : 0x000000;
+    key.material.emissive.lerp(new THREE.Color(targetEmission), 0.24);
   });
+  state.piano.controls.update();
+  state.piano.renderer.render(state.piano.scene, state.piano.camera);
   requestAnimationFrame(animatePiano);
 }
 
-function previewPianoKey(event) {
-  const key = event.target.closest(".piano-key");
-  if (!key) return;
-  const midi = Number(key.dataset.midi);
+function previewPianoKey(midi) {
   const context = new AudioContext();
   pressPianoKey(midi, 0.58);
   playTone(context, midiToFrequency(midi), 0.58);

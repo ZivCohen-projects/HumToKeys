@@ -629,9 +629,32 @@ h2 {
   transform: skewX(-12deg);
 }
 
+.piano-scene {
+  min-height: 560px;
+  background: #080a0b;
+}
+
+.piano-scene::before,
+.piano-scene::after {
+  display: none;
+}
+
+.piano-scene canvas.webgl-piano {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.piano-scene canvas.webgl-piano:active {
+  cursor: grabbing;
+}
+
 @media (max-width: 720px) {
-  .piano-scene,
-  .concert-piano {
+  .piano-scene {
     min-height: 405px;
   }
 
