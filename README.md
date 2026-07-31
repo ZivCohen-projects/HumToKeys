@@ -33,7 +33,7 @@ http://localhost:4173/HumToKeys/
 ## Notes
 
 - Pitch detection uses a YIN-style fundamental-frequency estimator with sub-sample lag interpolation, rather than a simple autocorrelation peak.
-- Pitch capture rejects low-confidence frames, smooths short-term pitch wobble, holds note changes until they settle, and preserves meaningful gaps between repeated notes.
+- Pitch capture filters out rumble and hiss, uses a confidence-weighted pitch lock with a generous note deadband, and runs a second pass to remove brief wrong-note blips before scoring.
 - Recording waits for a half-second of clear pitch before writing notes, which helps ignore the first slide into a note.
 - Natural-notes-only mode can snap recorded melodies away from sharps/flats.
 - The sheet renderer is a lightweight SVG notation view with measure-safe line wrapping, full-score view, and browser-generated PDF export.

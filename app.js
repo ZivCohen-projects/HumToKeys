@@ -1,4 +1,5 @@
 import { estimatePitchYin } from "./pitch-detector.mjs";
+import { inferNoteFrames, StablePitchTracker } from "./note-tracker.mjs";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
@@ -13,10 +14,7 @@ const state = {
   lastCaptureAt: 0,
   lastVoicedAt: 0,
   firstPitchAt: 0,
-  stableMidi: null,
-  pendingMidi: null,
-  pendingSince: 0,
-  pitchHistory: [],
+  pitchTracker: new StablePitchTracker(),
   rawFrames: [],
   melody: [],
   piano: null,
@@ -63,10 +61,7 @@ const scoreStartX = 148;
 const scoreSystemTop = 84;
 const scoreSystemGap = 240;
 const beatsPerMeasure = 4;
-const pitchAnalysisIntervalMs = 36;
-const pitchSmoothingWindowMs = 130;
-const noteChangeHoldMs = 110;
-const stableNoteDeadband = 0.62;
+const pitchAnalysisIntervalMs = 42;
 const frameCaptureIntervalMs = 72;
 const silenceBreakMs = 280;
 
@@ -97,9 +92,18 @@ async function startRecording() {
     });
 
     const source = state.audioContext.createMediaStreamSource(state.mediaStream);
+    const highPass = state.audioContext.createBiquadFilter();
+    highPass.type = "highpass";
+    highPass.frequency.value = 65;
+    highPass.Q.value = 0.7;
+    const lowPass = state.audioContext.createBiquadFilter();
+    lowPass.type = "lowpass";
+    lowPass.frequency.value = 1400;
+    lowPass.Q.value = 0.7;
     state.analyser = state.audioContext.createAnalyser();
     state.analyser.fftSize = 8192;
-    source.connect(state.analyser);
+    state.analyser.smoothingTimeConstant = 0;
+    source.connect(highPass).connect(lowPass).connect(state.analyser);
 
     state.rawFrames = [];
     state.melody = [];
@@ -109,10 +113,7 @@ async function startRecording() {
     state.lastCaptureAt = 0;
     state.lastVoicedAt = 0;
     state.firstPitchAt = 0;
-    state.stableMidi = null;
-    state.pendingMidi = null;
-    state.pendingSince = 0;
-    state.pitchHistory = [];
+    state.pitchTracker.reset();
 
     els.statusPill.textContent = "Listening";
     els.recordButton.disabled = true;
@@ -165,14 +166,17 @@ function capturePitch(now = performance.now()) {
   els.durationReadout.textContent = `${elapsed.toFixed(1)}s`;
 
   if (estimate) {
-    const smoothedMidi = getSmoothedMidi(
-      frequencyToMidiFloat(estimate.frequency),
-      estimate.clarity,
-      now,
-    );
-    const midi = stabilizeMidi(smoothedMidi, now);
-    const note = midiToNoteName(midi);
-    const centsFromNote = Math.round((smoothedMidi - midi) * 100);
+    const trackedPitch = state.pitchTracker.observe({
+      midiFloat: frequencyToMidiFloat(estimate.frequency),
+      clarity: estimate.clarity,
+      time: now,
+      snapMidi: applyPitchMode,
+    });
+    const displayMidi = trackedPitch.midi ?? trackedPitch.candidateMidi;
+    const note = displayMidi === null ? "--" : midiToNoteName(displayMidi);
+    const centsFromNote = displayMidi === null || trackedPitch.midiFloat === null
+      ? 0
+      : Math.round((trackedPitch.midiFloat - displayMidi) * 100);
     const centsLabel = centsFromNote === 0 ? "on pitch" : `${centsFromNote > 0 ? "+" : ""}${centsFromNote} cents`;
     els.currentNote.textContent = note;
     els.frequencyReadout.textContent = `${estimate.frequency.toFixed(1)} Hz | ${centsLabel} | ${Math.round(estimate.clarity * 100)}% clear`;
@@ -187,12 +191,12 @@ function capturePitch(now = performance.now()) {
       els.statusPill.textContent = "Recording";
     }
 
-    const isChangingNote = state.pendingMidi !== null;
-    if (warmupComplete && !isChangingNote && now - state.lastCaptureAt > frameCaptureIntervalMs) {
+    if (warmupComplete && trackedPitch.midiFloat !== null && now - state.lastCaptureAt > frameCaptureIntervalMs) {
       state.rawFrames.push({
         time: elapsed,
         frequency: estimate.frequency,
-        midi,
+        midiFloat: trackedPitch.midiFloat,
+        midi: trackedPitch.midi ?? trackedPitch.candidateMidi,
         clarity: estimate.clarity,
         breakBefore: state.rawFrames.length > 0 && now - state.lastCaptureAt > silenceBreakMs,
       });
@@ -202,11 +206,8 @@ function capturePitch(now = performance.now()) {
     state.lastVoicedAt = now;
   } else {
     if (!state.rawFrames.length) state.firstPitchAt = 0;
-    if (now - state.lastVoicedAt > pitchSmoothingWindowMs) {
-      state.pitchHistory = [];
-      state.stableMidi = null;
-      state.pendingMidi = null;
-      state.pendingSince = 0;
+    if (now - state.lastVoicedAt > 220) {
+      state.pitchTracker.reset();
     }
     els.currentNote.textContent = "--";
     els.frequencyReadout.textContent = "Listening for a clear pitch.";
@@ -218,11 +219,12 @@ function capturePitch(now = performance.now()) {
 
 function buildMelody(frames) {
   if (!frames.length) return [];
+  const cleanedFrames = inferNoteFrames(frames, { snapMidi: applyPitchMode });
   const notes = [];
   let current = null;
 
-  frames.forEach((frame, index) => {
-    const nextTime = frames[index + 1]?.time ?? frame.time + 0.28;
+  cleanedFrames.forEach((frame, index) => {
+    const nextTime = cleanedFrames[index + 1]?.time ?? frame.time + 0.28;
     if (!current || frame.breakBefore || Math.abs(frame.midi - current.midi) > 0) {
       if (current) notes.push(current);
       current = {
@@ -1211,10 +1213,7 @@ function clearMelody() {
   state.lastAnalysisAt = 0;
   state.lastCaptureAt = 0;
   state.lastVoicedAt = 0;
-  state.pitchHistory = [];
-  state.stableMidi = null;
-  state.pendingMidi = null;
-  state.pendingSince = 0;
+  state.pitchTracker.reset();
   els.currentNote.textContent = "--";
   els.frequencyReadout.textContent = "Waiting for microphone input.";
   els.noteCount.textContent = "0";
@@ -1228,10 +1227,7 @@ function clearMelody() {
 }
 
 function handlePitchModeChange() {
-  state.stableMidi = null;
-  state.pendingMidi = null;
-  state.pendingSince = 0;
-  state.pitchHistory = [];
+  state.pitchTracker.reset();
 
   if (els.naturalOnlyToggle.checked && state.melody.length) {
     state.melody = state.melody.map((note) => {
@@ -1247,52 +1243,6 @@ function handlePitchModeChange() {
   }
 }
 
-function getSmoothedMidi(midiFloat, clarity, now) {
-  state.pitchHistory.push({ midiFloat, clarity, time: now });
-  state.pitchHistory = state.pitchHistory.filter((frame) => now - frame.time <= pitchSmoothingWindowMs);
-
-  const midpoint = getMedian(state.pitchHistory.map((frame) => frame.midiFloat));
-  const inliers = state.pitchHistory.filter((frame) => Math.abs(frame.midiFloat - midpoint) <= 0.45);
-  const weightedTotal = inliers.reduce((total, frame) => total + frame.midiFloat * frame.clarity, 0);
-  const totalWeight = inliers.reduce((total, frame) => total + frame.clarity, 0);
-  return totalWeight ? weightedTotal / totalWeight : midiFloat;
-}
-
-function getMedian(values) {
-  const sorted = [...values].sort((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-function stabilizeMidi(smoothedMidi, now) {
-  const targetMidi = applyPitchMode(Math.round(smoothedMidi));
-
-  if (state.stableMidi === null) {
-    state.stableMidi = targetMidi;
-    return targetMidi;
-  }
-
-  const stableDistance = Math.abs(smoothedMidi - state.stableMidi);
-  if (targetMidi === state.stableMidi || stableDistance < stableNoteDeadband) {
-    state.pendingMidi = null;
-    state.pendingSince = 0;
-    return state.stableMidi;
-  }
-
-  if (state.pendingMidi !== targetMidi) {
-    state.pendingMidi = targetMidi;
-    state.pendingSince = now;
-    return state.stableMidi;
-  }
-
-  if (now - state.pendingSince >= noteChangeHoldMs) {
-    state.stableMidi = targetMidi;
-    state.pendingMidi = null;
-    state.pendingSince = 0;
-  }
-
-  return state.stableMidi;
-}
 
 function applyPitchMode(midi) {
   return els.naturalOnlyToggle.checked ? nearestNaturalMidi(midi) : midi;
