@@ -287,7 +287,8 @@ def create_grand_body(root, materials):
         string = add_beam(f"bass_string_{index + 1:02d}", start, end, 0.00165, copper, vertices=6)
         parent_keep_transform(string, root)
 
-    pin_block = add_box("tuning_pin_block", (1.13, 0.10, 0.075), (0.0, 0.37, 0.755), wood, bevel=0.006)
+    # Keep the tuning pin block visually recessed behind the keyboard.
+    pin_block = add_box("tuning_pin_block", (1.13, 0.10, 0.075), (0.0, 0.37, 0.755), satin_ebony, bevel=0.006)
     parent_keep_transform(pin_block, root)
     for index in range(30):
         x = -0.51 + index * (1.02 / 29)
@@ -355,7 +356,7 @@ def build() -> None:
     root = bpy.data.objects.new("HumToKeys_ConcertGrand", None)
     root["asset"] = "HumToKeys concert grand piano"
     root["keyPressAxis"] = "local X"
-    root["keyPressRadians"] = -0.08
+    root["keyPressRadians"] = 0.08
     bpy.context.collection.objects.link(root)
 
     materials = {
