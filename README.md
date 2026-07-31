@@ -32,9 +32,9 @@ http://localhost:4173/HumToKeys/
 
 ## Notes
 
-- Pitch detection is an autocorrelation prototype. It works best with one clear voice or hum and low background noise.
-- Pitch capture uses a tolerance window so small human pitch wobble does not immediately create accidental sharps/flats.
+- Pitch detection uses a YIN-style fundamental-frequency estimator with sub-sample lag interpolation, rather than a simple autocorrelation peak.
+- Pitch capture rejects low-confidence frames, smooths short-term pitch wobble, holds note changes until they settle, and preserves meaningful gaps between repeated notes.
 - Recording waits for a half-second of clear pitch before writing notes, which helps ignore the first slide into a note.
 - Natural-notes-only mode can snap recorded melodies away from sharps/flats.
 - The sheet renderer is a lightweight SVG notation view with measure-safe line wrapping, full-score view, and browser-generated PDF export.
-- The piano playback is synthesized in the browser and animated with a self-contained 3D canvas renderer.
+- The piano playback is synthesized in the browser and animated with a self-contained 3D 88-key piano renderer.
