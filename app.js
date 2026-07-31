@@ -19,6 +19,7 @@ const state = {
   rawFrames: [],
   melody: [],
   piano: null,
+  room: null,
   activeKey: null,
   playing: false,
   playbackAbort: false,
@@ -46,7 +47,7 @@ const els = {
   fullSheetSvg: document.querySelector("#fullSheetSvg"),
   scoreDialog: document.querySelector("#scoreDialog"),
   closeScoreButton: document.querySelector("#closeScoreButton"),
-  pianoScene: document.querySelector("#pianoScene"),
+  roomScene: document.querySelector("#roomScene"),
 };
 
 const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -66,7 +67,7 @@ const pitchAnalysisIntervalMs = 42;
 const frameCaptureIntervalMs = 72;
 const silenceBreakMs = 280;
 
-initPiano();
+initRoom();
 renderEmptySheet();
 
 els.recordButton.addEventListener("click", startRecording);
@@ -123,10 +124,12 @@ async function startRecording() {
     els.exportButton.disabled = true;
     els.viewScoreButton.disabled = true;
     renderEmptySheet();
+    refreshRoomControls();
     capturePitch();
   } catch (error) {
     els.statusPill.textContent = "Mic blocked";
     els.frequencyReadout.textContent = "Microphone access was not available. Try HTTPS, localhost, or the demo melody.";
+    refreshRoomControls();
   }
 }
 
@@ -147,6 +150,7 @@ function stopRecording() {
   els.exportButton.disabled = !state.melody.length;
   els.viewScoreButton.disabled = !state.melody.length;
   renderMelody();
+  refreshRoomControls();
 }
 
 function capturePitch(now = performance.now()) {
@@ -310,6 +314,7 @@ function renderNoteTrail(notes) {
 function renderEmptySheet() {
   renderEmptyScore(els.sheetSvg);
   renderEmptyScore(els.fullSheetSvg);
+  queueRoomScoreRefresh();
 }
 
 function renderSheet(notes) {
@@ -320,6 +325,7 @@ function renderSheet(notes) {
 
   renderScore(els.sheetSvg, notes, { preview: true });
   renderScore(els.fullSheetSvg, notes, { preview: false });
+  queueRoomScoreRefresh();
 }
 
 function renderEmptyScore(svg) {
@@ -555,6 +561,7 @@ async function playMelody() {
   const context = new AudioContext();
   state.playbackContext = context;
   els.playButton.textContent = "Stop playback";
+  refreshRoomControls();
 
   try {
     for (const note of state.melody) {
@@ -575,6 +582,7 @@ async function playMelody() {
     state.playbackAbort = false;
     state.playbackContext = null;
     els.playButton.textContent = "Play on piano";
+    refreshRoomControls();
   }
 }
 
@@ -785,6 +793,477 @@ function playTone(context, frequency, duration) {
   oscillator.connect(gain).connect(context.destination);
   oscillator.start();
   oscillator.stop(context.currentTime + duration + 0.04);
+}
+
+async function initRoom() {
+  const canvas = document.createElement("canvas");
+  canvas.className = "webgl-room";
+  canvas.setAttribute("aria-label", "Interactive 3D HumToKeys music room");
+  els.roomScene.replaceChildren(canvas);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.18;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x07100e);
+  scene.fog = new THREE.Fog(0x07100e, 10, 24);
+
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 60);
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.enablePan = false;
+  controls.minDistance = 2.2;
+  controls.maxDistance = 14;
+  controls.minPolarAngle = Math.PI / 7;
+  controls.maxPolarAngle = Math.PI / 1.84;
+
+  addMusicRoomLighting(scene);
+
+  try {
+    const loader = new GLTFLoader();
+    const [roomResult, pianoModel, manifest] = await Promise.all([
+      loader.loadAsync("./assets/humtokeys-music-room.glb?v=1"),
+      loadRoomPiano(loader),
+      fetch("./assets/humtokeys-music-room.interactions.json?v=1")
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null),
+    ]);
+
+    const room = roomResult.scene;
+    room.traverse((object) => {
+      if (!object.isMesh) return;
+      object.castShadow = !object.name.startsWith("collision_");
+      object.receiveShadow = !object.name.startsWith("collision_");
+      if (object.name.startsWith("collision_")) object.visible = false;
+    });
+    scene.add(room);
+
+    const pianoAnchor = room.getObjectByName("piano_anchor");
+    const spawn = room.getObjectByName("room_spawn");
+    const focus = room.getObjectByName("camera_focus_piano");
+    const standAnchor = room.getObjectByName("music_stand_anchor");
+    const recordPainting = room.getObjectByName("painting_record_control");
+    const scorePainting = room.getObjectByName("painting_score_control");
+    const clearPainting = room.getObjectByName("painting_clear_control");
+
+    if (!pianoAnchor || !spawn || !focus || !standAnchor || !recordPainting || !scorePainting || !clearPainting) {
+      throw new Error("The room asset is missing one or more required anchors or control paintings.");
+    }
+
+    pianoAnchor.add(pianoModel.root);
+    pianoModel.root.position.set(0, 0, 0);
+    pianoModel.root.rotation.set(0, Math.PI, 0);
+    pianoModel.root.scale.setScalar(1);
+
+    const target = new THREE.Vector3();
+    spawn.getWorldPosition(camera.position);
+    pianoAnchor.getWorldPosition(target);
+    target.y += 0.72;
+    controls.target.copy(target);
+    controls.update();
+
+    const controlCanvases = {
+      record: createRoomControlCanvas(room.getObjectByName("canvas_record_control"), "record"),
+      score: createRoomControlCanvas(room.getObjectByName("canvas_score_control"), "score"),
+      clear: createRoomControlCanvas(room.getObjectByName("canvas_clear_control"), "clear"),
+    };
+
+    if (!controlCanvases.record || !controlCanvases.score || !controlCanvases.clear) {
+      throw new Error("The room asset is missing one or more control canvases.");
+    }
+
+    const scoreSurface = createRoomScoreSurface(standAnchor);
+    const resize = () => {
+      const rect = els.roomScene.getBoundingClientRect();
+      renderer.setSize(Math.max(1, rect.width), Math.max(1, rect.height), false);
+      camera.aspect = rect.width / Math.max(1, rect.height);
+      camera.updateProjectionMatrix();
+    };
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(els.roomScene);
+    resize();
+
+    state.piano = { renderer, scene, camera, controls, keys: pianoModel.keys, resizeObserver };
+    state.room = {
+      root: room,
+      canvas,
+      manifest,
+      pianoAnchor,
+      focus,
+      controlCanvases,
+      scoreSurface,
+      scoreRefreshId: 0,
+      scoreVersion: 0,
+      paintings: {
+        record: recordPainting,
+        score: scorePainting,
+        clear: clearPainting,
+      },
+    };
+
+    bindRoomInteractions(canvas, camera, controls, [recordPainting, scorePainting, clearPainting], pianoModel.pickables);
+    refreshRoomControls();
+    queueRoomScoreRefresh();
+    animateRoom();
+  } catch (error) {
+    console.error("Unable to load the HumToKeys music room.", error);
+    els.statusPill.textContent = "Room unavailable";
+    els.frequencyReadout.textContent = "The room assets could not load. Refresh the page and try again.";
+    renderer.render(scene, camera);
+  }
+}
+
+function addMusicRoomLighting(scene) {
+  scene.add(new THREE.HemisphereLight(0x86a9b6, 0x201006, 1.9));
+
+  const mainLight = new THREE.DirectionalLight(0xffca82, 2.4);
+  mainLight.position.set(1.5, 7.8, 2.5);
+  mainLight.castShadow = true;
+  mainLight.shadow.mapSize.set(2048, 2048);
+  mainLight.shadow.camera.near = 0.5;
+  mainLight.shadow.camera.far = 24;
+  mainLight.shadow.camera.left = -7;
+  mainLight.shadow.camera.right = 7;
+  mainLight.shadow.camera.top = 7;
+  mainLight.shadow.camera.bottom = -7;
+  scene.add(mainLight);
+
+  const windowLight = new THREE.DirectionalLight(0x668aac, 1.25);
+  windowLight.position.set(-7, 4, 3);
+  scene.add(windowLight);
+
+  const pianoGlow = new THREE.PointLight(0xffa84c, 16, 8, 2);
+  pianoGlow.position.set(0.2, 2.55, 3.4);
+  scene.add(pianoGlow);
+
+  const recordGlow = new THREE.PointLight(0xffb55c, 8, 4.8, 2);
+  recordGlow.position.set(1.7, 2.1, 7.6);
+  scene.add(recordGlow);
+}
+
+async function loadRoomPiano(loader) {
+  const gltf = await loader.loadAsync("./assets/concert-grand-piano.glb?v=4");
+  const root = gltf.scene;
+  const keys = new Map();
+  const pickables = [];
+
+  root.traverse((object) => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+  });
+
+  root.traverse((pivot) => {
+    const match = /^pivot_(\d+)_/.exec(pivot.name);
+    if (!match) return;
+
+    const midi = Number(match[1]);
+    const meshes = [];
+    pivot.traverse((child) => {
+      if (!child.isMesh) return;
+      child.material = Array.isArray(child.material)
+        ? child.material.map((material) => material.clone())
+        : child.material.clone();
+      meshes.push(child);
+      pickables.push(child);
+    });
+
+    if (!meshes.length) return;
+    keys.set(midi, {
+      midi,
+      pivot,
+      meshes,
+      materials: meshes.flatMap((mesh) => (Array.isArray(mesh.material) ? mesh.material : [mesh.material])),
+      pressUntil: 0,
+      pressed: false,
+      // This exported rig uses positive local X to lower the front of a key.
+      pressRotation: Math.abs(Number(pivot.userData.pressRadians)) || 0.08,
+    });
+  });
+
+  if (keys.size !== 88) {
+    throw new Error(`Expected 88 rigged piano keys but found ${keys.size}.`);
+  }
+
+  return { root, keys, pickables };
+}
+
+function createRoomControlCanvas(mesh, kind) {
+  if (!mesh?.isMesh) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 768;
+  canvas.height = 1024;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = true;
+  const material = new THREE.MeshStandardMaterial({
+    map: texture,
+    roughness: 0.48,
+    metalness: 0.08,
+    emissive: new THREE.Color(0x170c04),
+    emissiveIntensity: 0.28,
+    side: THREE.DoubleSide,
+  });
+  const dimensions = kind === "record" ? [1.04, 1.40] : [0.68, 0.98];
+  const overlay = new THREE.Mesh(new THREE.PlaneGeometry(...dimensions), material);
+  overlay.name = `runtime_${kind}_control_canvas`;
+  overlay.position.copy(mesh.position);
+  overlay.position.z -= 0.048;
+  overlay.quaternion.copy(mesh.quaternion);
+  overlay.rotateY(Math.PI);
+  overlay.renderOrder = 3;
+  mesh.visible = false;
+  mesh.parent.add(overlay);
+  return { canvas, context, texture, kind, overlay };
+}
+
+function createRoomScoreSurface(anchor) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 660;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = true;
+  const surface = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.82, 0.45),
+    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }),
+  );
+  surface.rotation.y = Math.PI;
+  surface.position.set(0, 0, -0.045);
+  surface.renderOrder = 2;
+  anchor.add(surface);
+  return { canvas, context, texture, surface };
+}
+
+function refreshRoomControls() {
+  const controls = state.room?.controlCanvases;
+  if (!controls) return;
+
+  const recordLabel = state.recording
+    ? "Press to stop recording"
+    : state.playing
+      ? "Stop playback"
+      : state.melody.length
+        ? "Play recording"
+        : "Press to record";
+
+  drawRoomControl(controls.record, recordLabel, state.recording ? 0xb94a35 : 0xc99a4a);
+  drawRoomControl(controls.score, state.melody.length ? "Open score" : "Score awaits your melody", 0x7ba6b7);
+  drawRoomControl(controls.clear, state.melody.length ? "Clear recording" : "Clear recording", 0xad7560);
+}
+
+function drawRoomControl(control, label, accent) {
+  if (!control?.context) return;
+  const { canvas, context, texture, kind } = control;
+  const width = canvas.width;
+  const height = canvas.height;
+  const accentColor = `#${accent.toString(16).padStart(6, "0")}`;
+
+  context.fillStyle = "#111814";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#1e2a23";
+  context.fillRect(30, 30, width - 60, height - 60);
+  context.strokeStyle = "#d5ab5d";
+  context.lineWidth = 14;
+  context.strokeRect(42, 42, width - 84, height - 84);
+
+  context.fillStyle = accentColor;
+  if (kind === "record") {
+    context.beginPath();
+    context.arc(width / 2, 292, 104, 0, Math.PI * 2);
+    context.fill();
+  } else if (kind === "score") {
+    context.lineWidth = 10;
+    context.strokeStyle = accentColor;
+    for (let index = 0; index < 5; index += 1) {
+      const y = 220 + index * 42;
+      context.beginPath();
+      context.moveTo(180, y);
+      context.lineTo(width - 180, y);
+      context.stroke();
+    }
+    context.fillStyle = accentColor;
+    context.beginPath();
+    context.arc(width / 2 + 56, 274, 28, 0, Math.PI * 2);
+    context.fill();
+    context.fillRect(width / 2 + 80, 160, 18, 116);
+  } else {
+    context.strokeStyle = accentColor;
+    context.lineWidth = 26;
+    context.beginPath();
+    context.arc(width / 2, 278, 92, Math.PI * 0.18, Math.PI * 1.82);
+    context.stroke();
+    context.fillStyle = accentColor;
+    context.beginPath();
+    context.moveTo(width / 2 - 128, 202);
+    context.lineTo(width / 2 - 170, 112);
+    context.lineTo(width / 2 - 76, 146);
+    context.closePath();
+    context.fill();
+  }
+
+  context.fillStyle = "#f8ebd0";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.font = "600 62px Georgia, serif";
+  drawRoomWrappedText(context, label, width / 2, 680, width - 160, 86);
+  context.fillStyle = "#dfbf7d";
+  context.font = "800 23px Inter, sans-serif";
+  context.fillText(kind === "record" ? "LISTENING ROOM" : "HUM TO KEYS", width / 2, 858);
+  texture.needsUpdate = true;
+}
+
+function drawRoomWrappedText(context, text, centerX, centerY, maxWidth, lineHeight) {
+  const lines = [];
+  let line = "";
+  text.split(" ").forEach((word) => {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && context.measureText(candidate).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  });
+  if (line) lines.push(line);
+  const offset = ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((value, index) => context.fillText(value, centerX, centerY - offset + index * lineHeight));
+}
+
+function queueRoomScoreRefresh() {
+  if (!state.room) return;
+  cancelAnimationFrame(state.room.scoreRefreshId);
+  state.room.scoreRefreshId = requestAnimationFrame(refreshRoomScore);
+}
+
+function refreshRoomScore() {
+  const scoreSurface = state.room?.scoreSurface;
+  if (!scoreSurface?.context) return;
+  const version = ++state.room.scoreVersion;
+  const source = els.sheetSvg.cloneNode(true);
+  source.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  source.setAttribute("width", String(scoreWidth));
+  source.setAttribute("height", "330");
+  const url = URL.createObjectURL(new Blob([source.outerHTML], { type: "image/svg+xml;charset=utf-8" }));
+  const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(url);
+    if (!state.room || version !== state.room.scoreVersion) return;
+    scoreSurface.context.fillStyle = "#ffffff";
+    scoreSurface.context.fillRect(0, 0, scoreSurface.canvas.width, scoreSurface.canvas.height);
+    scoreSurface.context.drawImage(image, 0, 0, scoreSurface.canvas.width, scoreSurface.canvas.height);
+    scoreSurface.texture.needsUpdate = true;
+  };
+  image.onerror = () => URL.revokeObjectURL(url);
+  image.src = url;
+}
+
+function bindRoomInteractions(canvas, camera, controls, paintings, pianoPickables) {
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let pointerStart = null;
+
+  const intersect = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    pointer.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, camera);
+    return raycaster.intersectObjects([...paintings, ...pianoPickables], true)[0];
+  };
+
+  canvas.addEventListener("pointerdown", (event) => {
+    pointerStart = { x: event.clientX, y: event.clientY };
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (!state.room) return;
+    const hit = intersect(event);
+    canvas.style.cursor = getRoomControlFromObject(hit?.object) || hit?.object.userData.pianoKey ? "pointer" : "grab";
+  });
+
+  canvas.addEventListener("pointerup", (event) => {
+    if (!pointerStart || Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 7) return;
+    const hit = intersect(event);
+    const roomControl = getRoomControlFromObject(hit?.object);
+    if (roomControl) {
+      void activateRoomControl(roomControl);
+      return;
+    }
+    const key = hit?.object.userData.pianoKey;
+    if (key) previewPianoKey(key.midi);
+  });
+
+  controls.addEventListener("start", () => {
+    canvas.style.cursor = "grabbing";
+  });
+  controls.addEventListener("end", () => {
+    canvas.style.cursor = "grab";
+  });
+}
+
+function getRoomControlFromObject(object) {
+  let node = object;
+  while (node) {
+    if (node.name === "painting_record_control") return "record";
+    if (node.name === "painting_score_control") return "score";
+    if (node.name === "painting_clear_control") return "clear";
+    node = node.parent;
+  }
+  return null;
+}
+
+async function activateRoomControl(control) {
+  if (control === "record") {
+    if (state.recording) {
+      stopRecording();
+    } else if (state.playing) {
+      stopPlayback();
+    } else if (state.melody.length) {
+      await playMelody();
+    } else {
+      await startRecording();
+    }
+    return;
+  }
+
+  if (control === "score") {
+    if (state.melody.length) {
+      openScoreDialog();
+    } else {
+      els.statusPill.textContent = "Record a melody first";
+      refreshRoomControls();
+    }
+    return;
+  }
+
+  if (state.recording) stopRecording();
+  clearMelody();
+}
+
+function animateRoom() {
+  if (!state.piano) return;
+  const now = performance.now();
+  state.piano.keys.forEach((key) => {
+    const pressed = key.pressUntil > now;
+    key.pressed = pressed;
+    const targetRotation = pressed ? key.pressRotation : 0;
+    key.pivot.rotation.x += (targetRotation - key.pivot.rotation.x) * 0.28;
+    const targetEmission = pressed ? 0x9a4e0c : 0x000000;
+    key.materials.forEach((material) => material.emissive?.lerp(new THREE.Color(targetEmission), 0.24));
+  });
+  state.piano.controls.update();
+  state.piano.renderer.render(state.piano.scene, state.piano.camera);
+  requestAnimationFrame(animateRoom);
 }
 
 async function initPiano() {
@@ -1272,6 +1751,7 @@ function loadDemo() {
   els.exportButton.disabled = false;
   els.viewScoreButton.disabled = false;
   renderMelody();
+  refreshRoomControls();
 }
 
 function clearMelody() {
@@ -1292,7 +1772,9 @@ function clearMelody() {
   els.exportButton.disabled = true;
   els.viewScoreButton.disabled = true;
   if (els.scoreDialog.open) els.scoreDialog.close();
+  els.statusPill.textContent = "Room ready";
   renderEmptySheet();
+  refreshRoomControls();
 }
 
 function handlePitchModeChange() {

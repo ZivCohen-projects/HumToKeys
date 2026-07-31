@@ -1,6 +1,6 @@
 # HumToKeys
 
-A browser app that records a sung or hummed melody, estimates pitch with the Web Audio API, turns the result into a printable black-and-white score with eighth, quarter, half, dotted half, and whole notes, and plays it back on a canvas-rendered 3D piano with animated key presses.
+A browser app that records a sung or hummed melody, estimates pitch with the Web Audio API, turns the result into a printable black-and-white score with eighth, quarter, half, dotted half, and whole notes, and plays it back on a full 3D piano inside an interactive music room.
 
 Live app:
 
@@ -38,6 +38,10 @@ http://localhost:4173/HumToKeys/
 - Natural-notes-only mode can snap recorded melodies away from sharps/flats.
 - The sheet renderer is a lightweight SVG notation view with measure-safe line wrapping, full-score view, and browser-generated PDF export.
 - The piano playback is synthesized in the browser and animated on a Blender-generated GLB concert grand. Every MIDI key has a named pivot from `pivot_21_A0` through `pivot_108_C8`.
+
+## 3D Room
+
+The entire interface is a Three.js music room. The framed record painting changes between recording, stop, and playback states; the score and clear paintings open the score or reset a recording; and the music stand shows the current generated notation. The room is [assets/humtokeys-music-room.glb](assets/humtokeys-music-room.glb), with named anchors and interaction metadata in [assets/humtokeys-music-room.interactions.json](assets/humtokeys-music-room.interactions.json). Its Blender generator is [tools/generate_humtokeys_music_room.py](tools/generate_humtokeys_music_room.py).
 
 ## Piano Asset
 

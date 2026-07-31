@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "asset": "humtokeys-music-room.glb",
+  "coordinateSystem": {
+    "up": "+Y",
+    "forward": "+Z",
+    "floorY": 0.0,
+    "units": "meters"
+  },
+  "externalAssets": {
+    "piano": {
+      "url": "concert-grand-piano.glb",
+      "anchor": "piano_anchor"
+    }
+  },
+  "controls": {
+    "record": {
+      "painting": "painting_record_control",
+      "canvas": "canvas_record_control",
+      "interactionType": "record_control",
+      "states": [
+        {
+          "id": "idle",
+          "label": "Press to record"
+        },
+        {
+          "id": "recording",
+          "label": "Press to stop recording"
+        },
+        {
+          "id": "ready",
+          "label": "Play recording"
+        }
+      ]
+    },
+    "score": {
+      "painting": "painting_score_control",
+      "canvas": "canvas_score_control",
+      "interactionType": "score_control",
+      "defaultLabel": "Open score"
+    },
+    "clear": {
+      "painting": "painting_clear_control",
+      "canvas": "canvas_clear_control",
+      "interactionType": "clear_control",
+      "defaultLabel": "Clear recording"
+    }
+  },
+  "anchors": {
+    "piano": "piano_anchor",
+    "musicStand": "music_stand_anchor",
+    "spawn": "room_spawn",
+    "cameraFocusPiano": "camera_focus_piano"
+  },
+  "navigation": {
+    "entrance": "nav_entrance",
+    "piano": "nav_piano",
+    "recordPainting": "nav_record_painting",
+    "scorePainting": "nav_score_painting",
+    "clearPainting": "nav_clear_painting"
+  },
+  "collisions": [
+    "collision_wall_back",
+    "collision_wall_left",
+    "collision_wall_right",
+    "collision_piano_area",
+    "collision_bookshelf_front",
+    "collision_bookshelf_back",
+    "collision_chair",
+    "collision_table",
+    "collision_music_stand",
+    "collision_record_lamp"
+  ]
+}
