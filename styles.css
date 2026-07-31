@@ -336,20 +336,329 @@ h2 {
 }
 
 .piano-scene {
-  min-height: 430px;
-  border: 1px solid rgba(238, 229, 214, 0.26);
+  min-height: 520px;
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(238, 229, 214, 0.3);
   background:
-    linear-gradient(90deg, rgba(143, 111, 53, 0.18) 1px, transparent 1px),
-    repeating-linear-gradient(to bottom, rgba(238, 229, 214, 0.11) 0 1px, transparent 1px 11px),
-    #12100f;
-  background-size: 148px 100%, 100% 55px, auto;
+    radial-gradient(ellipse at 50% 105%, rgba(158, 113, 51, 0.2), transparent 44%),
+    linear-gradient(115deg, #101312 0%, #24221c 47%, #0d1110 100%);
   overflow: hidden;
 }
 
-.piano-scene canvas {
-  display: block;
-  width: 100%;
+.piano-scene::before,
+.piano-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.piano-scene::before {
+  z-index: -1;
+  opacity: 0.42;
+  background:
+    linear-gradient(90deg, transparent 0 7%, rgba(234, 226, 210, 0.07) 7.1% 7.18%, transparent 7.28% 92.7%, rgba(234, 226, 210, 0.07) 92.8% 92.88%, transparent 93%),
+    repeating-linear-gradient(to bottom, transparent 0 25px, rgba(235, 218, 183, 0.055) 25px 26px, transparent 26px 54px);
+}
+
+.piano-scene::after {
+  z-index: 0;
+  inset: auto 0 0;
+  height: 42%;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.34));
+}
+
+.concert-piano {
+  --case-dark: #120f0c;
+  position: relative;
+  z-index: 1;
+  width: min(1160px, calc(100% - 34px));
   height: 100%;
+  min-height: 520px;
+  margin: 0 auto;
+  perspective: 1500px;
+}
+
+.piano-lid {
+  position: absolute;
+  z-index: 1;
+  top: 11%;
+  left: 10%;
+  width: 80%;
+  height: 31%;
+  border: 1px solid rgba(203, 157, 80, 0.36);
+  border-radius: 48% 48% 8px 8px;
+  background:
+    linear-gradient(100deg, rgba(255, 229, 169, 0.12), transparent 13% 75%, rgba(0, 0, 0, 0.35)),
+    linear-gradient(142deg, #653d27 0%, #291811 34%, #100d0b 76%);
+  box-shadow: 0 28px 54px rgba(0, 0, 0, 0.46), inset 0 1px rgba(255, 238, 201, 0.16);
+  transform: rotateX(11deg) rotateZ(-1.5deg);
+  transform-origin: bottom center;
+}
+
+.piano-lid::after {
+  content: "";
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  bottom: 17%;
+  height: 1px;
+  background: rgba(232, 194, 118, 0.38);
+}
+
+.piano-lid span {
+  position: absolute;
+  right: 18%;
+  bottom: -31%;
+  width: 7px;
+  height: 48%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #5c3d1d, #d3a64e, #5b3519);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.65);
+  transform: rotate(8deg);
+}
+
+.piano-fallboard {
+  position: absolute;
+  z-index: 3;
+  top: 32%;
+  left: 7.5%;
+  width: 85%;
+  height: 12%;
+  padding: 0 clamp(16px, 3vw, 36px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #d7ad5a;
+  border: 1px solid rgba(226, 184, 94, 0.36);
+  background:
+    linear-gradient(180deg, rgba(255, 231, 174, 0.12), transparent 32%),
+    linear-gradient(100deg, #51301f, var(--case-dark) 46%, #3a2218);
+  box-shadow: inset 0 1px rgba(255, 235, 194, 0.18), 0 12px 18px rgba(0, 0, 0, 0.36);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(0.9rem, 2vw, 1.25rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.piano-fallboard small {
+  color: rgba(233, 203, 139, 0.64);
+  font-family: Inter, ui-sans-serif, sans-serif;
+  font-size: 0.57em;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.piano-keybed {
+  position: absolute;
+  z-index: 4;
+  right: 4%;
+  bottom: 16%;
+  left: 4%;
+  height: 46%;
+  padding: 12px 12px 24px;
+  border: 1px solid rgba(197, 156, 86, 0.38);
+  border-radius: 6px 6px 18px 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 229, 167, 0.08), transparent 15%),
+    linear-gradient(100deg, #57311e, #17100d 19% 81%, #4b2b1b);
+  box-shadow: 0 26px 36px rgba(0, 0, 0, 0.6), inset 0 1px rgba(255, 232, 187, 0.16);
+  transform: rotateX(2deg);
+  transform-style: preserve-3d;
+}
+
+.piano-keyboard {
+  position: relative;
+  height: 100%;
+  border: 7px solid #130e0a;
+  border-top-width: 10px;
+  border-radius: 3px 3px 9px 9px;
+  background: #16110d;
+  box-shadow: inset 0 0 0 1px rgba(222, 180, 95, 0.18), 0 11px 12px rgba(0, 0, 0, 0.55);
+  transform: perspective(1100px) rotateX(17deg);
+  transform-origin: center top;
+  transform-style: preserve-3d;
+}
+
+.piano-key {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  border: 0;
+  appearance: none;
+  transform-style: preserve-3d;
+  transition: transform 85ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 85ms ease;
+}
+
+.piano-key--white {
+  z-index: 1;
+  left: var(--white-position);
+  width: calc(100% / 52);
+  transform: translateZ(1px);
+  transform-origin: 50% 0;
+  background: transparent;
+}
+
+.piano-key--white .key-surface {
+  position: absolute;
+  inset: 0 1px 0 0;
+  overflow: hidden;
+  border: 1px solid #877f75;
+  border-top-color: #fffdf5;
+  border-radius: 0 0 3px 3px;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0.84), transparent 18% 75%, rgba(150, 142, 130, 0.24)),
+    #e9e5d9;
+  box-shadow: inset 0 -7px 10px rgba(64, 54, 40, 0.1);
+}
+
+.piano-key--white .key-front {
+  position: absolute;
+  right: 1px;
+  bottom: -12px;
+  left: 0;
+  height: 13px;
+  border: 1px solid #8b8378;
+  border-top: 0;
+  background: linear-gradient(#d4cec2, #918b82);
+  transform: rotateX(-88deg);
+  transform-origin: top;
+}
+
+.piano-key--white[data-label]::after {
+  content: attr(data-label);
+  position: absolute;
+  z-index: 2;
+  right: 1px;
+  bottom: 6px;
+  left: 0;
+  color: rgba(63, 51, 39, 0.48);
+  font-family: Inter, ui-sans-serif, sans-serif;
+  font-size: clamp(6px, 0.66vw, 9px);
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.piano-key--black {
+  z-index: 3;
+  top: -2px;
+  left: var(--black-position);
+  width: calc(100% / 52 * 0.63);
+  height: 62%;
+  transform: translateX(-50%) translateZ(18px);
+  transform-origin: 50% 0;
+  background: transparent;
+}
+
+.piano-key--black .key-surface {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #020202;
+  border-radius: 0 0 4px 4px;
+  background:
+    linear-gradient(100deg, rgba(255, 255, 255, 0.18), transparent 18% 58%, rgba(0, 0, 0, 0.54)),
+    linear-gradient(#3b3937, #080808 20%, #030303);
+  box-shadow: inset 1px 0 rgba(255, 255, 255, 0.18), inset -2px -6px 8px rgba(0, 0, 0, 0.8), 1px 7px 5px rgba(0, 0, 0, 0.6);
+}
+
+.piano-key--black .key-front {
+  position: absolute;
+  right: 1px;
+  bottom: -9px;
+  left: 1px;
+  height: 10px;
+  background: #050505;
+  transform: rotateX(-88deg);
+  transform-origin: top;
+}
+
+.piano-key:hover .key-surface {
+  filter: brightness(1.08);
+}
+
+.piano-key:focus-visible {
+  z-index: 5;
+  outline: 2px solid #d5a84e;
+  outline-offset: -2px;
+}
+
+.piano-key--white.is-pressed {
+  z-index: 2;
+  transform: translateY(17px) rotateX(2deg) translateZ(-3px);
+}
+
+.piano-key--white.is-pressed .key-surface {
+  border-color: #a77d32;
+  background:
+    linear-gradient(100deg, rgba(255, 237, 174, 0.76), transparent 44%, rgba(120, 70, 20, 0.18)),
+    #d5a74f;
+  box-shadow: inset 0 -8px 10px rgba(72, 43, 12, 0.25), 0 0 14px rgba(215, 166, 66, 0.36);
+}
+
+.piano-key--black.is-pressed {
+  transform: translateX(-50%) translateY(12px) translateZ(5px) rotateX(2deg);
+}
+
+.piano-key--black.is-pressed .key-surface {
+  border-color: #cf9c3d;
+  background: linear-gradient(100deg, #d8ad58, #8c5f1f 64%, #40270f);
+  box-shadow: inset 1px 0 rgba(255, 247, 203, 0.38), 0 0 16px rgba(213, 159, 54, 0.44);
+}
+
+.piano-pedals {
+  position: absolute;
+  z-index: 2;
+  bottom: 5%;
+  left: 50%;
+  display: flex;
+  gap: 10px;
+  transform: translateX(-50%);
+}
+
+.piano-pedals i {
+  width: 28px;
+  height: 12px;
+  border-radius: 50% 50% 42% 42%;
+  background: linear-gradient(180deg, #f1cd72, #8d5d19);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.65);
+  transform: skewX(-12deg);
+}
+
+@media (max-width: 720px) {
+  .piano-scene,
+  .concert-piano {
+    min-height: 405px;
+  }
+
+  .concert-piano {
+    width: calc(100% - 20px);
+  }
+
+  .piano-lid {
+    top: 13%;
+  }
+
+  .piano-fallboard {
+    top: 35%;
+  }
+
+  .piano-keybed {
+    right: 1%;
+    bottom: 16%;
+    left: 1%;
+    height: 43%;
+    padding: 8px 7px 16px;
+  }
+
+  .piano-keyboard {
+    border-width: 4px;
+    border-top-width: 6px;
+  }
 }
 
 @media (max-width: 900px) {

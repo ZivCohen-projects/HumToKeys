@@ -70,7 +70,6 @@ els.dialogExportButton.addEventListener("click", exportScore);
 els.viewScoreButton.addEventListener("click", openScoreDialog);
 els.closeScoreButton.addEventListener("click", () => els.scoreDialog.close());
 els.naturalOnlyToggle.addEventListener("change", handlePitchModeChange);
-window.addEventListener("resize", resizePiano);
 
 async function startRecording() {
   try {
@@ -744,20 +743,34 @@ function playTone(context, frequency, duration) {
 }
 
 function initPiano() {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  els.pianoScene.append(canvas);
-
   const keys = new Map();
   const whiteMidis = [];
   for (let midi = pianoLowestMidi; midi <= pianoHighestMidi; midi += 1) {
     if (whitePitchClasses.has(midi % 12)) whiteMidis.push(midi);
   }
 
+  const piano = document.createElement("div");
+  piano.className = "concert-piano";
+  piano.innerHTML = `
+    <div class="piano-lid" aria-hidden="true"><span></span></div>
+    <div class="piano-fallboard" aria-hidden="true">
+      <span>HumToKeys</span>
+      <small>CONCERT 88</small>
+    </div>
+    <div class="piano-keybed">
+      <div class="piano-keyboard" role="group" aria-label="Interactive 88-key piano"></div>
+    </div>
+    <div class="piano-pedals" aria-hidden="true"><i></i><i></i><i></i></div>
+  `;
+  const keyboard = piano.querySelector(".piano-keyboard");
+  els.pianoScene.replaceChildren(piano);
+
   const whitePositions = new Map();
 
   whiteMidis.forEach((midi, index) => {
-    const key = { midi, index, black: false, pressed: false, pressUntil: 0 };
+    const element = buildPianoKey(midi, index, false, whiteMidis.length);
+    keyboard.append(element);
+    const key = { midi, index, black: false, pressed: false, pressUntil: 0, element };
     keys.set(midi, key);
     whitePositions.set(midi, index);
   });
@@ -767,166 +780,64 @@ function initPiano() {
     const previousWhite = findPreviousWhite(midi);
     const nextWhite = findNextWhite(midi);
     if (!whitePositions.has(previousWhite) || !whitePositions.has(nextWhite)) continue;
+    const index = (whitePositions.get(previousWhite) + whitePositions.get(nextWhite)) / 2;
+    const element = buildPianoKey(midi, index, true, whiteMidis.length);
+    keyboard.append(element);
     keys.set(midi, {
       midi,
-      index: (whitePositions.get(previousWhite) + whitePositions.get(nextWhite)) / 2,
+      index,
       black: true,
       pressed: false,
       pressUntil: 0,
+      element,
     });
   }
 
-  state.piano = { canvas, ctx, keys, whiteCount: whiteMidis.length };
-  resizePiano();
+  keyboard.addEventListener("pointerdown", previewPianoKey);
+  state.piano = { keys, whiteCount: whiteMidis.length };
   animatePiano();
 }
 
-function resizePiano() {
-  if (!state.piano) return;
-  const rect = els.pianoScene.getBoundingClientRect();
-  const ratio = window.devicePixelRatio || 1;
-  state.piano.canvas.width = Math.max(1, rect.width) * ratio;
-  state.piano.canvas.height = Math.max(1, rect.height) * ratio;
-  state.piano.canvas.style.width = `${rect.width}px`;
-  state.piano.canvas.style.height = `${rect.height}px`;
-  state.piano.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+function buildPianoKey(midi, index, black, whiteCount) {
+  const key = document.createElement("button");
+  const noteName = midiToNoteName(midi);
+  key.type = "button";
+  key.className = `piano-key ${black ? "piano-key--black" : "piano-key--white"}`;
+  key.dataset.midi = midi;
+  key.setAttribute("aria-label", `${noteName} ${black ? "black" : "white"} piano key`);
+
+  if (black) {
+    key.style.setProperty("--black-position", `${(index / whiteCount) * 100}%`);
+  } else {
+    key.style.setProperty("--white-position", `${(index / whiteCount) * 100}%`);
+    if (noteName.startsWith("C")) key.dataset.label = noteName;
+  }
+
+  key.innerHTML = '<span class="key-surface"></span><span class="key-front"></span>';
+  return key;
 }
 
 function animatePiano() {
   if (!state.piano) return;
-  drawPiano();
+  const now = performance.now();
+  state.piano.keys.forEach((key) => {
+    const pressed = key.pressUntil > now;
+    if (pressed === key.pressed) return;
+    key.pressed = pressed;
+    key.element.classList.toggle("is-pressed", pressed);
+    key.element.setAttribute("aria-pressed", String(pressed));
+  });
   requestAnimationFrame(animatePiano);
 }
 
-function drawPiano() {
-  const { canvas, ctx, keys, whiteCount } = state.piano;
-  const width = canvas.clientWidth || 900;
-  const height = canvas.clientHeight || 360;
-  const now = performance.now();
-  ctx.clearRect(0, 0, width, height);
-
-  const keyWidth = Math.max(7.5, Math.min(22, (width - 48) / whiteCount));
-  const startX = (width - keyWidth * whiteCount) / 2;
-  const topY = height * 0.28;
-  const keyDepth = height * 0.5;
-  const perspective = Math.min(58, height * 0.15);
-  const bodyY = topY - 42;
-
-  const gradient = ctx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, "#211a17");
-  gradient.addColorStop(0.52, "#141b18");
-  gradient.addColorStop(1, "#0b0d0c");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, width, height);
-
-  drawPianoBackdrop(ctx, width, height);
-  drawRoundedRect(ctx, startX - 28, bodyY, keyWidth * whiteCount + 56, 82, 8, "#4b3025");
-  drawPerspectivePanel(ctx, startX - 22, topY - 16, keyWidth * whiteCount + 44, keyDepth + 46, perspective, "#2b1b17");
-
-  [...keys.values()]
-    .filter((key) => !key.black)
-    .forEach((key) => {
-      key.pressed = key.pressUntil > now;
-      const x = startX + key.index * keyWidth;
-      const press = key.pressed ? Math.max(5, keyDepth * 0.035) : 0;
-      drawWhiteKey(ctx, x, topY + press, Math.max(4, keyWidth - 1.2), keyDepth, perspective, key.pressed);
-    });
-
-  [...keys.values()]
-    .filter((key) => key.black)
-    .forEach((key) => {
-      key.pressed = key.pressUntil > now;
-      const x = startX + key.index * keyWidth - keyWidth * 0.31;
-      const press = key.pressed ? Math.max(4, keyDepth * 0.035) : 0;
-      drawBlackKey(ctx, x, topY + press, keyWidth * 0.62, keyDepth * 0.58, perspective * 0.62, key.pressed);
-    });
-
-  drawPianoLabels(ctx, startX, keyWidth, whiteCount, height);
-}
-
-function drawPianoBackdrop(ctx, width, height) {
-  ctx.strokeStyle = "rgba(222, 204, 166, 0.12)";
-  ctx.lineWidth = 1;
-  for (let group = 0; group < 5; group += 1) {
-    const y = 42 + group * 9;
-    ctx.beginPath();
-    ctx.moveTo(28, y);
-    ctx.lineTo(width - 28, y);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = "rgba(143, 111, 53, 0.14)";
-  for (let x = 58; x < width; x += 132) {
-    ctx.beginPath();
-    ctx.moveTo(x, 22);
-    ctx.lineTo(x, height - 28);
-    ctx.stroke();
-  }
-}
-
-function drawPianoLabels(ctx, startX, keyWidth, whiteCount, height) {
-  ctx.fillStyle = "rgba(239, 232, 220, 0.72)";
-  ctx.font = "800 12px Inter, sans-serif";
-  ctx.fillText("88-key concert range", startX, height - 28);
-  ctx.textAlign = "right";
-  ctx.fillText("A0", startX + keyWidth * 1.5, height - 28);
-  ctx.textAlign = "center";
-  ctx.fillText("C4", startX + keyWidth * 23, height - 28);
-  ctx.textAlign = "left";
-  ctx.fillText("C8", startX + keyWidth * (whiteCount - 1), height - 28);
-  ctx.textAlign = "start";
-}
-
-function drawWhiteKey(ctx, x, y, width, depth, perspective, pressed) {
-  const topColor = pressed ? "#c89c4a" : "#eee7d8";
-  const sideColor = pressed ? "#9d7839" : "#bdb4a5";
-  drawPerspectivePanel(ctx, x, y, width, depth, perspective, sideColor);
-  drawKeyTop(ctx, x, y, width, depth, perspective, topColor, "#181311");
-}
-
-function drawBlackKey(ctx, x, y, width, depth, perspective, pressed) {
-  const topColor = pressed ? "#b48a3c" : "#090909";
-  const sideColor = pressed ? "#7f5d25" : "#020202";
-  drawPerspectivePanel(ctx, x, y, width, depth, perspective, sideColor);
-  drawKeyTop(ctx, x, y, width, depth, perspective, topColor, "#000000");
-}
-
-function drawKeyTop(ctx, x, y, width, depth, perspective, fill, stroke) {
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + width, y);
-  ctx.lineTo(x + width + perspective * 0.22, y + depth);
-  ctx.lineTo(x - perspective * 0.22, y + depth);
-  ctx.closePath();
-  ctx.fillStyle = fill;
-  ctx.fill();
-  ctx.strokeStyle = stroke;
-  ctx.globalAlpha = 0.42;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-}
-
-function drawPerspectivePanel(ctx, x, y, width, depth, perspective, fill) {
-  ctx.beginPath();
-  ctx.moveTo(x - perspective * 0.22, y + depth);
-  ctx.lineTo(x + width + perspective * 0.22, y + depth);
-  ctx.lineTo(x + width + perspective * 0.42, y + depth + perspective);
-  ctx.lineTo(x - perspective * 0.42, y + depth + perspective);
-  ctx.closePath();
-  ctx.fillStyle = fill;
-  ctx.fill();
-}
-
-function drawRoundedRect(ctx, x, y, width, height, radius, fill) {
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.arcTo(x + width, y, x + width, y + height, radius);
-  ctx.arcTo(x + width, y + height, x, y + height, radius);
-  ctx.arcTo(x, y + height, x, y, radius);
-  ctx.arcTo(x, y, x + width, y, radius);
-  ctx.closePath();
-  ctx.fillStyle = fill;
-  ctx.fill();
+function previewPianoKey(event) {
+  const key = event.target.closest(".piano-key");
+  if (!key) return;
+  const midi = Number(key.dataset.midi);
+  const context = new AudioContext();
+  pressPianoKey(midi, 0.58);
+  playTone(context, midiToFrequency(midi), 0.58);
+  window.setTimeout(() => context.close().catch(() => {}), 760);
 }
 
 function pressPianoKey(midi, duration) {
