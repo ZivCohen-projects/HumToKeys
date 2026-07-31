@@ -865,7 +865,7 @@ async function initPiano() {
 
 async function loadRiggedGrandPiano() {
   const loader = new GLTFLoader();
-  const gltf = await loader.loadAsync("./assets/concert-grand-piano.glb");
+  const gltf = await loader.loadAsync("./assets/concert-grand-piano.glb?v=2");
   const root = gltf.scene;
   const keys = new Map();
   const pickables = [];
@@ -899,7 +899,8 @@ async function loadRiggedGrandPiano() {
       materials: meshes.flatMap((mesh) => Array.isArray(mesh.material) ? mesh.material : [mesh.material]),
       pressUntil: 0,
       pressed: false,
-      pressRotation: Number(pivot.userData.pressRadians) || -0.08,
+      // The model's keys pivot at the rear; positive X rotates their fronts down.
+      pressRotation: Math.abs(Number(pivot.userData.pressRadians)) || 0.08,
     });
   });
 

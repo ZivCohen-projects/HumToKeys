@@ -30,7 +30,8 @@ WHITE_KEY_PITCH = 0.0235
 WHITE_KEY_WIDTH = 0.0224
 WHITE_KEY_LENGTH = 0.500
 BLACK_KEY_WIDTH = 0.0134
-BLACK_KEY_LENGTH = 0.310
+BLACK_KEY_LENGTH = 0.255
+KEY_REAR_Y = WHITE_KEY_LENGTH / 2 - 0.005
 
 
 def reset_scene() -> None:
@@ -193,11 +194,12 @@ def create_keys(root, ivory, key_ebony):
         x = -key_span / 2 + WHITE_KEY_PITCH / 2 + index * WHITE_KEY_PITCH
         white_x[midi] = x
         pivot = bpy.data.objects.new(f"pivot_{midi}_{note}", None)
-        pivot.location = (x, WHITE_KEY_LENGTH / 2 - 0.008, 0.724)
+        pivot.location = (x, KEY_REAR_Y - 0.003, 0.724)
         pivot["midi"] = midi
         pivot["note"] = note
         pivot["keyType"] = "white"
-        pivot["pressRadians"] = -0.08
+        # The key fronts point toward -Y, so a positive X rotation presses them down.
+        pivot["pressRadians"] = 0.08
         bpy.context.collection.objects.link(pivot)
         pivot.parent = root
 
@@ -220,18 +222,18 @@ def create_keys(root, ivory, key_ebony):
         note = note_name(midi)
         x = white_x[midi - 1] + WHITE_KEY_PITCH * (0.5 + black_offsets[pitch_class])
         pivot = bpy.data.objects.new(f"pivot_{midi}_{note}", None)
-        pivot.location = (x, BLACK_KEY_LENGTH / 2 - 0.008, 0.758)
+        pivot.location = (x, KEY_REAR_Y - 0.003, 0.758)
         pivot["midi"] = midi
         pivot["note"] = note
         pivot["keyType"] = "black"
-        pivot["pressRadians"] = -0.08
+        pivot["pressRadians"] = 0.08
         bpy.context.collection.objects.link(pivot)
         pivot.parent = root
 
         key = add_box(
             f"key_{midi}_{note}",
             (BLACK_KEY_WIDTH, BLACK_KEY_LENGTH, 0.038),
-            (x, 0.025, 0.739),
+            (x, KEY_REAR_Y - BLACK_KEY_LENGTH / 2, 0.739),
             key_ebony,
             bevel=0.0018,
             rotation=(math.radians(-1.1), 0.0, 0.0),
@@ -252,7 +254,6 @@ def create_grand_body(root, materials):
     plate = materials["plate"]
     steel = materials["steel"]
     copper = materials["copper"]
-    felt = materials["felt"]
 
     outline = [
         (-0.80, -0.30), (0.80, -0.30), (0.80, 0.18), (0.75, 0.68),
@@ -270,9 +271,7 @@ def create_grand_body(root, materials):
     keyboard_bed = add_box("keyboard_bed", (1.54, 0.73, 0.095), (0.0, -0.02, 0.665), ebony, bevel=0.014)
     key_slip = add_box("key_slip", (1.34, 0.038, 0.045), (0.0, -0.275, 0.730), satin_ebony, bevel=0.004)
     fallboard = add_box("fallboard", (1.35, 0.11, 0.18), (0.0, 0.37, 0.82), ebony, bevel=0.014, rotation=(math.radians(-7), 0, 0))
-    back_felt = add_box("key_back_felt", (1.28, 0.026, 0.025), (0.0, 0.242, 0.740), felt, bevel=0.002)
-
-    for object_ in (body, rim, soundboard, cast_plate, keyboard_bed, key_slip, fallboard, back_felt):
+    for object_ in (body, rim, soundboard, cast_plate, keyboard_bed, key_slip, fallboard):
         parent_keep_transform(object_, root)
 
     for index in range(38):
@@ -369,7 +368,6 @@ def build() -> None:
         "plate": make_material("Cast iron plate", (0.42, 0.24, 0.065, 1), metallic=0.68, roughness=0.25),
         "steel": make_material("Steel strings", (0.36, 0.40, 0.46, 1), metallic=0.92, roughness=0.17),
         "copper": make_material("Copper strings", (0.34, 0.10, 0.028, 1), metallic=0.80, roughness=0.22),
-        "felt": make_material("Key felt", (0.30, 0.006, 0.012, 1), roughness=0.82),
     }
     manifest = create_keys(root, materials["ivory"], materials["key_ebony"])
     create_grand_body(root, materials)
