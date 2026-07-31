@@ -1,6 +1,7 @@
 import { estimatePitchYin } from "./pitch-detector.mjs";
 import { inferNoteFrames, StablePitchTracker } from "./note-tracker.mjs";
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const state = {
@@ -786,7 +787,7 @@ function playTone(context, frequency, duration) {
   oscillator.stop(context.currentTime + duration + 0.04);
 }
 
-function initPiano() {
+async function initPiano() {
   const canvas = document.createElement("canvas");
   canvas.className = "webgl-piano";
   canvas.setAttribute("aria-label", "Interactive 3D 88-key concert grand piano");
@@ -819,7 +820,14 @@ function initPiano() {
   controls.update();
 
   addPianoStudio(scene);
-  const { root, keys, pickables } = buildGrandPianoModel();
+  let model;
+  try {
+    model = await loadRiggedGrandPiano();
+  } catch (error) {
+    console.warn("The rigged piano asset could not load; using the built-in piano instead.", error);
+    model = buildGrandPianoModel();
+  }
+  const { root, keys, pickables } = model;
   scene.add(root);
 
   const raycaster = new THREE.Raycaster();
@@ -853,6 +861,56 @@ function initPiano() {
 
   state.piano = { renderer, scene, camera, controls, keys, resizeObserver };
   animatePiano();
+}
+
+async function loadRiggedGrandPiano() {
+  const loader = new GLTFLoader();
+  const gltf = await loader.loadAsync("./assets/concert-grand-piano.glb");
+  const root = gltf.scene;
+  const keys = new Map();
+  const pickables = [];
+
+  root.traverse((object) => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+  });
+
+  root.traverse((pivot) => {
+    const match = /^pivot_(\d+)_/.exec(pivot.name);
+    if (!match) return;
+
+    const midi = Number(match[1]);
+    const meshes = [];
+    pivot.traverse((child) => {
+      if (!child.isMesh) return;
+      child.material = Array.isArray(child.material)
+        ? child.material.map((material) => material.clone())
+        : child.material.clone();
+      meshes.push(child);
+      pickables.push(child);
+    });
+
+    if (!meshes.length) return;
+    keys.set(midi, {
+      midi,
+      pivot,
+      meshes,
+      materials: meshes.flatMap((mesh) => Array.isArray(mesh.material) ? mesh.material : [mesh.material]),
+      pressUntil: 0,
+      pressed: false,
+      pressRotation: Number(pivot.userData.pressRadians) || -0.08,
+    });
+  });
+
+  if (keys.size !== 88) {
+    throw new Error(`Expected 88 rigged piano keys but found ${keys.size}.`);
+  }
+
+  root.scale.setScalar(5.2);
+  root.position.set(0, -2.8, 0.35);
+  root.rotation.y = -0.12;
+  return { root, keys, pickables };
 }
 
 function addPianoStudio(scene) {
@@ -1111,7 +1169,17 @@ function buildThreePianoKey(midi, x, black, index, root, pickables) {
   mesh.receiveShadow = true;
   pivot.add(mesh);
 
-  const key = { midi, index, black, pressed: false, pressUntil: 0, pivot, mesh, material };
+  const key = {
+    midi,
+    index,
+    black,
+    pressed: false,
+    pressUntil: 0,
+    pivot,
+    mesh,
+    materials: [material],
+    pressRotation: 0.068,
+  };
   mesh.userData.pianoKey = key;
   pickables.push(mesh);
   return key;
@@ -1123,10 +1191,10 @@ function animatePiano() {
   state.piano.keys.forEach((key) => {
     const pressed = key.pressUntil > now;
     key.pressed = pressed;
-    const targetRotation = pressed ? 0.068 : 0;
+    const targetRotation = pressed ? key.pressRotation : 0;
     key.pivot.rotation.x += (targetRotation - key.pivot.rotation.x) * 0.28;
     const targetEmission = pressed ? 0x9a4e0c : 0x000000;
-    key.material.emissive.lerp(new THREE.Color(targetEmission), 0.24);
+    key.materials.forEach((material) => material.emissive?.lerp(new THREE.Color(targetEmission), 0.24));
   });
   state.piano.controls.update();
   state.piano.renderer.render(state.piano.scene, state.piano.camera);

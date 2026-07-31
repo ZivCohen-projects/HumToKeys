@@ -37,4 +37,8 @@ http://localhost:4173/HumToKeys/
 - Recording waits for a half-second of clear pitch before writing notes, which helps ignore the first slide into a note.
 - Natural-notes-only mode can snap recorded melodies away from sharps/flats.
 - The sheet renderer is a lightweight SVG notation view with measure-safe line wrapping, full-score view, and browser-generated PDF export.
-- The piano playback is synthesized in the browser and animated with a self-contained 3D 88-key piano renderer.
+- The piano playback is synthesized in the browser and animated on a Blender-generated GLB concert grand. Every MIDI key has a named pivot from `pivot_21_A0` through `pivot_108_C8`.
+
+## Piano Asset
+
+The shipped piano model is [assets/concert-grand-piano.glb](assets/concert-grand-piano.glb). Its Blender generator lives at [tools/generate_concert_grand_piano.py](tools/generate_concert_grand_piano.py) and writes both the GLB and the key manifest in `assets/` when run with Blender 4.4 or later.
