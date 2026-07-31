@@ -865,7 +865,7 @@ async function initPiano() {
 
 async function loadRiggedGrandPiano() {
   const loader = new GLTFLoader();
-  const gltf = await loader.loadAsync("./assets/concert-grand-piano.glb?v=3");
+  const gltf = await loader.loadAsync("./assets/concert-grand-piano.glb?v=4");
   const root = gltf.scene;
   const keys = new Map();
   const pickables = [];

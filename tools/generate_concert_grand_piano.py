@@ -28,10 +28,12 @@ BLACK_PITCH_CLASSES = {"Cs", "Ds", "Fs", "Gs", "As"}
 
 WHITE_KEY_PITCH = 0.0235
 WHITE_KEY_WIDTH = 0.0224
-WHITE_KEY_LENGTH = 0.500
+WHITE_KEY_LENGTH = 0.250
 BLACK_KEY_WIDTH = 0.0134
-BLACK_KEY_LENGTH = 0.255
-KEY_REAR_Y = WHITE_KEY_LENGTH / 2 - 0.005
+BLACK_KEY_LENGTH = 0.140
+KEY_FRONT_Y = -0.250
+KEY_REAR_Y = KEY_FRONT_Y + WHITE_KEY_LENGTH
+BLACK_KEY_REAR_Y = KEY_REAR_Y + 0.050
 
 
 def reset_scene() -> None:
@@ -206,7 +208,7 @@ def create_keys(root, ivory, key_ebony):
         key = add_box(
             f"key_{midi}_{note}",
             (WHITE_KEY_WIDTH, WHITE_KEY_LENGTH, 0.024),
-            (x, 0.0, 0.712),
+            (x, KEY_FRONT_Y + WHITE_KEY_LENGTH / 2, 0.712),
             ivory,
             bevel=0.0013,
         )
@@ -222,7 +224,7 @@ def create_keys(root, ivory, key_ebony):
         note = note_name(midi)
         x = white_x[midi - 1] + WHITE_KEY_PITCH * (0.5 + black_offsets[pitch_class])
         pivot = bpy.data.objects.new(f"pivot_{midi}_{note}", None)
-        pivot.location = (x, KEY_REAR_Y - 0.003, 0.758)
+        pivot.location = (x, BLACK_KEY_REAR_Y - 0.003, 0.758)
         pivot["midi"] = midi
         pivot["note"] = note
         pivot["keyType"] = "black"
@@ -233,7 +235,7 @@ def create_keys(root, ivory, key_ebony):
         key = add_box(
             f"key_{midi}_{note}",
             (BLACK_KEY_WIDTH, BLACK_KEY_LENGTH, 0.038),
-            (x, KEY_REAR_Y - BLACK_KEY_LENGTH / 2, 0.739),
+            (x, BLACK_KEY_REAR_Y - BLACK_KEY_LENGTH / 2, 0.739),
             key_ebony,
             bevel=0.0018,
             rotation=(math.radians(-1.1), 0.0, 0.0),
